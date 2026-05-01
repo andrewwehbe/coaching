@@ -50,12 +50,12 @@ export function NewClientForm() {
   if (created) {
     return (
       <div className="space-y-6">
-        <div className="rounded-2xl border border-emerald-700/50 bg-emerald-950/30 p-6 text-center">
-          <p className="text-sm text-emerald-200/80 mb-2">Send this PIN to {created.name}:</p>
-          <p className="text-5xl font-bold tracking-[0.3em] tabular-nums my-4">
+        <div className="rounded-2xl border border-primary/40 bg-primary/8 p-6 text-center shadow-[0_0_60px_-20px_rgba(34,197,94,0.7)]">
+          <p className="text-sm text-primary-hi mb-2">Send this PIN to {created.name}:</p>
+          <p className="text-5xl font-bold tracking-[0.3em] tabular-nums my-4 text-text">
             {pinHidden ? '•••••' : created.pin}
           </p>
-          <p className="text-xs text-neutral-400">
+          <p className="text-xs text-muted">
             This is the only time the PIN will be shown. If you lose it, regenerate from the
             client&apos;s detail page.
           </p>
@@ -64,7 +64,7 @@ export function NewClientForm() {
           <button
             type="button"
             onClick={() => setPinHidden((h) => !h)}
-            className="flex-1 h-12 rounded-xl border border-neutral-700 hover:bg-neutral-900 text-sm"
+            className="flex-1 h-12 rounded-xl border border-border text-sm text-text hover:bg-surface-2 transition-colors"
           >
             {pinHidden ? 'Show' : 'Hide'} PIN
           </button>
@@ -73,7 +73,7 @@ export function NewClientForm() {
             onClick={async () => {
               await navigator.clipboard.writeText(created.pin);
             }}
-            className="flex-1 h-12 rounded-xl border border-neutral-700 hover:bg-neutral-900 text-sm"
+            className="flex-1 h-12 rounded-xl border border-border text-sm text-text hover:bg-surface-2 transition-colors"
           >
             Copy
           </button>
@@ -81,7 +81,7 @@ export function NewClientForm() {
         <div className="grid grid-cols-2 gap-3">
           <Link
             href={`/coach/clients/${created.id}`}
-            className="h-12 flex items-center justify-center rounded-xl bg-emerald-700/80 hover:bg-emerald-700 text-sm font-medium"
+            className="h-12 flex items-center justify-center rounded-xl bg-primary hover:bg-primary-hi text-bg text-sm font-semibold transition-colors shadow-[0_8px_24px_-10px_rgba(34,197,94,0.6)]"
           >
             Open client
           </Link>
@@ -91,7 +91,7 @@ export function NewClientForm() {
               router.push('/coach');
               router.refresh();
             }}
-            className="h-12 rounded-xl border border-neutral-700 hover:bg-neutral-900 text-sm"
+            className="h-12 rounded-xl border border-border text-sm text-text hover:bg-surface-2 transition-colors"
           >
             Done
           </button>
@@ -108,7 +108,7 @@ export function NewClientForm() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Client name"
-          className="w-full h-12 rounded-xl bg-neutral-900 border border-neutral-800 px-3 focus:outline-none focus:border-neutral-500"
+          className="w-full h-12 rounded-xl bg-surface border border-border px-3 focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 transition-shadow placeholder:text-faint"
         />
       </Field>
 
@@ -119,7 +119,7 @@ export function NewClientForm() {
           max={7}
           value={weeklyDayTarget}
           onChange={(e) => setWeeklyDayTarget(Number(e.target.value))}
-          className="w-full h-12 rounded-xl bg-neutral-900 border border-neutral-800 px-3 focus:outline-none focus:border-neutral-500"
+          className="w-full h-12 rounded-xl bg-surface border border-border px-3 tabular-nums focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 transition-shadow"
         />
       </Field>
 
@@ -127,7 +127,7 @@ export function NewClientForm() {
         <select
           value={bodyWeightFreq}
           onChange={(e) => setBodyWeightFreq(e.target.value as BodyWeightFreq)}
-          className="w-full h-12 rounded-xl bg-neutral-900 border border-neutral-800 px-3 focus:outline-none focus:border-neutral-500"
+          className="w-full h-12 rounded-xl bg-surface border border-border px-3 focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 transition-shadow"
         >
           <option value="none">None</option>
           <option value="daily">Daily</option>
@@ -143,12 +143,12 @@ export function NewClientForm() {
       />
       <Toggle label="Meal plan" checked={mealPlan} onChange={setMealPlan} />
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       <button
         type="submit"
         disabled={submitting || !name.trim()}
-        className="w-full h-12 rounded-xl bg-emerald-700/80 hover:bg-emerald-700 disabled:opacity-50 font-medium"
+        className="w-full h-14 rounded-2xl bg-primary hover:bg-primary-hi active:bg-primary-press text-bg font-semibold disabled:opacity-40 disabled:shadow-none transition-all shadow-[0_10px_40px_-12px_rgba(34,197,94,0.7)]"
       >
         {submitting ? 'Creating…' : 'Create client'}
       </button>
@@ -159,7 +159,7 @@ export function NewClientForm() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-xs uppercase tracking-wide text-neutral-500 mb-1.5 block">
+      <span className="text-xs uppercase tracking-[0.18em] text-faint mb-1.5 block">
         {label}
       </span>
       {children}
@@ -180,16 +180,16 @@ function Toggle({
     <button
       type="button"
       onClick={() => onChange(!checked)}
-      className="flex items-center justify-between w-full rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3"
+      className="flex items-center justify-between w-full rounded-xl border border-border bg-surface/60 hover:bg-surface px-4 py-3 transition-colors"
     >
-      <span className="text-sm">{label}</span>
+      <span className="text-sm text-text">{label}</span>
       <span
         className={`w-10 h-6 rounded-full transition-colors relative ${
-          checked ? 'bg-emerald-600' : 'bg-neutral-700'
+          checked ? 'bg-primary' : 'bg-border-strong'
         }`}
       >
         <span
-          className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+          className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-bg transition-transform ${
             checked ? 'translate-x-4' : ''
           }`}
         />
