@@ -179,26 +179,20 @@ export async function attemptPinLogin(
  * Issues a session row and sets the session cookie. Returns the session id.
  */
 export async function issueSession(user: SessionUser, userAgent: string | null): Promise<string> {
+  void userAgent; // device row is now created lazily on push subscribe
   const supa = db();
   const token = newToken();
   const expires = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60_000);
 
-  // Track the device (one row per session for now; we'll merge in M5).
-  const { data: device } = await supa
-    .from('devices')
-    .insert({
-      user_type: user.type,
-      user_id: user.id,
-      user_agent: userAgent,
-    })
-    .select('id')
-    .single();
-
+  // We used to insert a `devices` row on every login as scaffolding for push,
+  // but that polluted the table with orphan rows that had no push subscription.
+  // Devices are now created only by /api/push/subscribe, so a real device row
+  // implies a real subscription. Sessions just record device_id = null here.
   await supa.from('sessions').insert({
     id: token,
     user_type: user.type,
     user_id: user.id,
-    device_id: device?.id ?? null,
+    device_id: null,
     expires_at: expires.toISOString(),
   });
 

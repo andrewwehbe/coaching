@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { readSession } from '@/lib/auth';
 import { buildTodaySchedule } from '@/lib/schedule';
 import { LogoutButton } from '@/components/logout-button';
-import { PushPrompt } from '@/components/push-prompt';
+import { NotificationsToggle } from '@/components/notifications-toggle';
 import { BeginButton } from './begin-button';
 
 export default async function TodayPage() {
@@ -35,6 +35,7 @@ export default async function TodayPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{user.name}</h1>
         </div>
         <div className="flex items-center gap-4">
+          <NotificationsToggle />
           <Link
             href="/check-in"
             className="text-sm text-muted hover:text-text transition-colors"
@@ -44,8 +45,6 @@ export default async function TodayPage() {
           <LogoutButton />
         </div>
       </header>
-
-      <PushPrompt />
 
       {schedule.threeInARowWarning && (
         <div className="mb-5 rounded-xl border border-warn/35 bg-warn/10 px-4 py-3 text-sm text-warn">

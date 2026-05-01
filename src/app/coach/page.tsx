@@ -5,7 +5,7 @@ import { requireCoach } from '@/lib/coach-guard';
 import { listClientSummaries, type ClientStatus } from '@/lib/clients';
 import { db } from '@/lib/supabase';
 import { LogoutButton } from '@/components/logout-button';
-import { PushPrompt } from '@/components/push-prompt';
+import { NotificationsToggle } from '@/components/notifications-toggle';
 import { AlertsStrip } from './alerts-strip';
 
 export const dynamic = 'force-dynamic';
@@ -43,6 +43,7 @@ export default async function CoachHome() {
           <h1 className="text-2xl font-semibold tracking-tight">{user.name}</h1>
         </div>
         <div className="flex items-center gap-4">
+          <NotificationsToggle />
           <Link
             href="/coach/alerts"
             className="text-sm text-muted hover:text-text transition-colors"
@@ -58,8 +59,6 @@ export default async function CoachHome() {
           <LogoutButton />
         </div>
       </header>
-
-      <PushPrompt />
 
       <AlertsStrip alerts={sortedAlerts} />
 
