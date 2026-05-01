@@ -28,11 +28,14 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#06090a',
+  // Slight green shift so the iOS status bar / Safari URL bar feels of-a-piece
+  // with the page's primary-green ambient gradient instead of a flat black band.
+  themeColor: '#091410',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({
