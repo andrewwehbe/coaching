@@ -1,10 +1,8 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 export function LogoutButton({ label = 'Sign out' }: { label?: string }) {
-  const router = useRouter();
   const [busy, setBusy] = useState(false);
   return (
     <button
@@ -13,8 +11,9 @@ export function LogoutButton({ label = 'Sign out' }: { label?: string }) {
       onClick={async () => {
         setBusy(true);
         await fetch('/api/auth/logout', { method: 'POST' });
-        router.replace('/login');
-        router.refresh();
+        // Hard navigation: forces the browser to drop any cached RSC
+        // state and re-request /login with no session cookie.
+        window.location.href = '/login';
       }}
       className="text-sm text-neutral-400 hover:text-neutral-200 disabled:opacity-50"
     >
