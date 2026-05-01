@@ -11,8 +11,10 @@
  * pending swap_proposals row when stage hits swap_candidate.
  */
 import { NextResponse } from 'next/server';
+import { startOfWeek, formatISO } from 'date-fns';
 
 import { db } from '@/lib/supabase';
+import { sendPushToCoach, sendPushToClient } from '@/lib/push';
 import {
   buildExposureHistory,
   countConsecutiveStalled,
@@ -47,7 +49,13 @@ async function handle(req: Request): Promise<NextResponse> {
       { status: 500 }
     );
   }
-  if (req.headers.get('x-cron-secret') !== secret) {
+  // Accept either:
+  //   - x-cron-secret: <CRON_SECRET>           (manual / curl)
+  //   - Authorization: Bearer <CRON_SECRET>    (Vercel Cron auto-sends this)
+  const headerSecret = req.headers.get('x-cron-secret');
+  const auth = req.headers.get('authorization') ?? '';
+  const bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : null;
+  if (headerSecret !== secret && bearer !== secret) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -55,7 +63,7 @@ async function handle(req: Request): Promise<NextResponse> {
 
   const { data: clients, error: clientsErr } = await supa
     .from('clients')
-    .select('id')
+    .select('id, name, weekly_day_target, body_weight_freq, photo_check_in_enabled')
     .eq('active', true);
   if (clientsErr) {
     return NextResponse.json({ error: clientsErr.message }, { status: 500 });
@@ -66,14 +74,121 @@ async function handle(req: Request): Promise<NextResponse> {
     exercises_processed: number;
     escalations: number;
     swap_proposals_opened: number;
+    reminders_sent: number;
   }[] = [];
 
   for (const client of clients ?? []) {
     const result = await analyzeClient(client.id);
-    summary.push({ client_id: client.id, ...result });
+    const reminders = await runReminders({
+      clientId: client.id,
+      name: client.name,
+      weeklyDayTarget: client.weekly_day_target,
+      hasCheckIns:
+        client.body_weight_freq !== 'none' || client.photo_check_in_enabled === true,
+    });
+    summary.push({ client_id: client.id, ...result, reminders_sent: reminders });
   }
 
   return NextResponse.json({ ok: true, clients: summary.length, summary });
+}
+
+/**
+ * Day-of-week reminders. Cron is expected to fire daily, so:
+ * - Saturday: if client is behind on weekly_day_target → push to client + coach.
+ * - Sunday:   if client has check-ins enabled and hasn't checked in this week → push to client.
+ *
+ * Idempotency: we suppress if an alert of the same type was created in the
+ * last 20 hours. Cron runs once/day; the buffer absorbs manual re-triggers.
+ */
+async function runReminders(args: {
+  clientId: string;
+  name: string;
+  weeklyDayTarget: number;
+  hasCheckIns: boolean;
+}): Promise<number> {
+  const supa = db();
+  const now = new Date();
+  const dow = now.getDay(); // 0=Sun, 6=Sat
+  const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+  const weekStartIso = formatISO(weekStart, { representation: 'date' });
+  const sinceIso = new Date(Date.now() - 20 * 3600 * 1000).toISOString();
+
+  let sent = 0;
+
+  if (dow === 6) {
+    const { data: completed } = await supa
+      .from('workouts')
+      .select('id')
+      .eq('client_id', args.clientId)
+      .eq('week_start', weekStartIso)
+      .not('completed_at', 'is', null);
+    const done = completed?.length ?? 0;
+
+    if (done < args.weeklyDayTarget) {
+      const { data: existing } = await supa
+        .from('alerts')
+        .select('id')
+        .eq('client_id', args.clientId)
+        .eq('type', 'missed_workout')
+        .gte('created_at', sinceIso)
+        .limit(1);
+
+      if (!existing?.length) {
+        await supa.from('alerts').insert({
+          client_id: args.clientId,
+          type: 'missed_workout',
+          message: `${args.name} is behind (${done}/${args.weeklyDayTarget} this week).`,
+        });
+        const remaining = args.weeklyDayTarget - done;
+        void sendPushToClient(args.clientId, {
+          title: "Don't lose the week",
+          body: `${remaining} more workout${remaining === 1 ? '' : 's'} to hit your weekly goal.`,
+          url: '/today',
+        }).catch(() => {});
+        void sendPushToCoach({
+          title: 'Behind on workouts',
+          body: `${args.name}: ${done}/${args.weeklyDayTarget} this week.`,
+          url: `/coach`,
+        }).catch(() => {});
+        sent++;
+      }
+    }
+  }
+
+  if (dow === 0 && args.hasCheckIns) {
+    const { data: ci } = await supa
+      .from('check_ins')
+      .select('id')
+      .eq('client_id', args.clientId)
+      .gte('date', weekStartIso)
+      .limit(1);
+
+    if (!ci?.length) {
+      const { data: existing } = await supa
+        .from('alerts')
+        .select('id')
+        .eq('client_id', args.clientId)
+        .eq('type', 'check_in_due')
+        .gte('created_at', sinceIso)
+        .limit(1);
+
+      if (!existing?.length) {
+        await supa.from('alerts').insert({
+          client_id: args.clientId,
+          type: 'check_in_due',
+          message: `${args.name} hasn't checked in this week.`,
+        });
+        void sendPushToClient(args.clientId, {
+          title: 'Weekly check-in',
+          body: 'Take a minute to log your weight + photos.',
+          url: '/check-in',
+        }).catch(() => {});
+        sent++;
+      }
+    }
+  }
+
+  return sent;
 }
 
 async function analyzeClient(clientId: string) {
@@ -259,6 +374,13 @@ async function analyzeClient(clientId: string) {
   }
   if (alertInserts.length > 0) {
     await supa.from('alerts').insert(alertInserts);
+    for (const a of alertInserts) {
+      void sendPushToCoach({
+        title: 'Stalled exercise',
+        body: a.message,
+        url: '/coach',
+      }).catch(() => {});
+    }
   }
 
   let proposalsOpened = 0;

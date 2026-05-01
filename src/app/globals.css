@@ -1,26 +1,78 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #06090a;
+  --surface: #0c1112;
+  --surface-2: #121a1c;
+  --border: #1c2628;
+  --border-strong: #29373a;
+  --text: #ecf2ee;
+  --muted: #8a9b94;
+  --faint: #586862;
+
+  --primary: #22c55e;
+  --primary-hi: #4ade80;
+  --primary-deep: #16a34a;
+  --primary-press: #15803d;
+
+  --accent: #7dd3fc;
+  --accent-deep: #38bdf8;
+
+  --warn: #fbbf24;
+  --danger: #f87171;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+
+  --color-primary: var(--primary);
+  --color-primary-hi: var(--primary-hi);
+  --color-primary-deep: var(--primary-deep);
+  --color-primary-press: var(--primary-press);
+
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-image:
+    radial-gradient(1100px 620px at 82% -15%, rgba(34, 197, 94, 0.09), transparent 62%),
+    radial-gradient(900px 520px at -10% 108%, rgba(125, 211, 252, 0.05), transparent 65%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* Hide spin buttons on number inputs (phone-first). */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Soft pulse for active timer. */
+@keyframes softPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.78; }
+}
+.animate-soft-pulse { animation: softPulse 2.4s ease-in-out infinite; }

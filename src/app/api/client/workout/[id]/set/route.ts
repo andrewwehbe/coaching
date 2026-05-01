@@ -13,7 +13,9 @@ const Body = z.object({
   reps: z.number().int().min(1).max(200).nullable().optional(),
   rir: z.number().int().min(0).max(10).nullable().optional(),
   cardioMinutes: z.number().int().min(1).max(180).nullable().optional(),
-  videoUrl: z.string().url().nullable().optional(),
+  // Bucket-relative storage path returned by /api/client/upload-url.
+  // Stored as-is in sets.video_url (legacy column name) and signed at read time.
+  videoPath: z.string().min(1).max(500).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
 });
 
@@ -73,7 +75,7 @@ export async function POST(req: Request, props: { params: Params }) {
         reps: parsed.data.reps ?? null,
         rir: parsed.data.rir ?? null,
         cardio_minutes: parsed.data.cardioMinutes ?? null,
-        video_url: parsed.data.videoUrl ?? null,
+        video_url: parsed.data.videoPath ?? null,
         notes: parsed.data.notes ?? null,
       },
       { onConflict: 'exercise_log_id,set_number' }

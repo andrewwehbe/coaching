@@ -22,3 +22,40 @@ export function db(): SupabaseClient {
   });
   return _client;
 }
+
+/** Default signed-URL TTL: 1 hour. Long enough to view, short enough that
+ * a leaked link is essentially worthless. */
+const SIGNED_URL_TTL_SECONDS = 60 * 60;
+
+/** Sign a single storage path. Returns null if the path is missing or signing fails. */
+export async function signMediaUrl(
+  bucket: string,
+  path: string | null | undefined,
+  ttlSeconds: number = SIGNED_URL_TTL_SECONDS
+): Promise<string | null> {
+  if (!path) return null;
+  const { data, error } = await db()
+    .storage.from(bucket)
+    .createSignedUrl(path, ttlSeconds);
+  if (error || !data) return null;
+  return data.signedUrl;
+}
+
+/** Batch-sign many paths from the same bucket. Order of results matches input. */
+export async function signMediaUrls(
+  bucket: string,
+  paths: ReadonlyArray<string | null | undefined>,
+  ttlSeconds: number = SIGNED_URL_TTL_SECONDS
+): Promise<(string | null)[]> {
+  const present = paths.filter((p): p is string => !!p);
+  if (present.length === 0) return paths.map(() => null);
+  const { data, error } = await db()
+    .storage.from(bucket)
+    .createSignedUrls(present, ttlSeconds);
+  if (error || !data) return paths.map(() => null);
+  const byPath = new Map<string, string>();
+  for (const row of data) {
+    if (row.path && row.signedUrl) byPath.set(row.path, row.signedUrl);
+  }
+  return paths.map((p) => (p ? byPath.get(p) ?? null : null));
+}

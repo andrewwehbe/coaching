@@ -5,6 +5,7 @@ import { requireCoach } from '@/lib/coach-guard';
 import { listClientSummaries, type ClientStatus } from '@/lib/clients';
 import { db } from '@/lib/supabase';
 import { LogoutButton } from '@/components/logout-button';
+import { PushPrompt } from '@/components/push-prompt';
 import { AlertsStrip } from './alerts-strip';
 
 export const dynamic = 'force-dynamic';
@@ -36,21 +37,21 @@ export default async function CoachHome() {
 
   return (
     <main className="flex flex-1 flex-col px-5 py-6 max-w-3xl w-full mx-auto">
-      <header className="flex items-center justify-between mb-6">
+      <header className="flex items-center justify-between mb-7">
         <div>
-          <p className="text-sm text-neutral-400">Coach</p>
-          <h1 className="text-2xl font-semibold">{user.name}</h1>
+          <p className="text-sm text-muted">Coach</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{user.name}</h1>
         </div>
         <div className="flex items-center gap-4">
           <Link
             href="/coach/alerts"
-            className="text-sm text-neutral-300 hover:text-neutral-100"
+            className="text-sm text-muted hover:text-text transition-colors"
           >
             Alerts
           </Link>
           <Link
             href="/coach/clients/new"
-            className="text-sm rounded-lg bg-emerald-700/80 hover:bg-emerald-700 px-3 py-1.5 font-medium"
+            className="text-sm rounded-xl bg-primary hover:bg-primary-hi text-bg px-3.5 py-1.5 font-semibold transition-colors shadow-[0_8px_24px_-10px_rgba(34,197,94,0.6)]"
           >
             + Client
           </Link>
@@ -58,14 +59,16 @@ export default async function CoachHome() {
         </div>
       </header>
 
+      <PushPrompt />
+
       <AlertsStrip alerts={sortedAlerts} />
 
-      <section className="mt-6">
-        <h2 className="text-sm uppercase tracking-wide text-neutral-500 mb-2">Clients</h2>
+      <section className="mt-7">
+        <h2 className="text-xs uppercase tracking-[0.18em] text-faint mb-3">Clients</h2>
         {clients.length === 0 ? (
-          <p className="text-neutral-400 text-sm">
+          <p className="text-muted text-sm">
             No clients yet.{' '}
-            <Link href="/coach/clients/new" className="text-emerald-400 underline">
+            <Link href="/coach/clients/new" className="text-primary-hi hover:text-primary underline transition-colors">
               Add one
             </Link>
             .
@@ -76,12 +79,12 @@ export default async function CoachHome() {
               <li key={c.id}>
                 <Link
                   href={`/coach/clients/${c.id}`}
-                  className="block rounded-xl px-4 py-3 border border-neutral-800 bg-neutral-900/40 hover:border-neutral-700 transition-colors"
+                  className="block rounded-2xl px-4 py-3.5 border border-border bg-surface/60 hover:border-border-strong hover:bg-surface transition-all"
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">{c.name}</p>
-                      <p className="text-xs text-neutral-500 mt-0.5">
+                      <p className="font-medium text-text">{c.name}</p>
+                      <p className="text-xs text-faint mt-0.5">
                         {c.daysLoggedThisWeek}/{c.weeklyDayTarget} this week
                         {c.lastActivityAt && (
                           <>
@@ -108,24 +111,24 @@ export default async function CoachHome() {
 function StatusChip({ status }: { status: ClientStatus }) {
   const map: Record<ClientStatus, { label: string; className: string }> = {
     on_track: {
-      label: '✅ On track',
-      className: 'bg-emerald-900/60 text-emerald-300 border-emerald-700/40',
+      label: 'On track',
+      className: 'bg-primary/15 text-primary-hi border-primary/30',
     },
     behind: {
-      label: '⚠️ Behind',
-      className: 'bg-amber-900/60 text-amber-200 border-amber-700/40',
+      label: 'Behind',
+      className: 'bg-warn/10 text-warn border-warn/30',
     },
     inactive: {
-      label: '⛔ Inactive',
-      className: 'bg-neutral-800 text-neutral-400 border-neutral-700',
+      label: 'Inactive',
+      className: 'bg-surface-2 text-muted border-border',
     },
     pain: {
-      label: '🔴 Pain',
-      className: 'bg-red-900/60 text-red-200 border-red-700/40',
+      label: 'Pain',
+      className: 'bg-danger/10 text-danger border-danger/35',
     },
   };
   const cfg = map[status];
   return (
-    <span className={`text-xs px-2 py-1 rounded-full border ${cfg.className}`}>{cfg.label}</span>
+    <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${cfg.className}`}>{cfg.label}</span>
   );
 }

@@ -15,7 +15,7 @@ export function LogoutButton({ label = 'Sign out' }: { label?: string }) {
         // state and re-request /login with no session cookie.
         window.location.href = '/login';
       }}
-      className="text-sm text-neutral-400 hover:text-neutral-200 disabled:opacity-50"
+      className="text-sm text-muted hover:text-text transition-colors disabled:opacity-50"
     >
       {label}
     </button>

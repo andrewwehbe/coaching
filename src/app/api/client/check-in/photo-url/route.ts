@@ -6,8 +6,8 @@ import { readSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { checkUploadRate } from '@/lib/upload-rate';
 
-const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
-const BUCKET = 'workout-videos';
+const MAX_BYTES = 10 * 1024 * 1024; // 10 MB per photo
+const BUCKET = 'check-in-photos';
 
 const Body = z.object({
   filename: z.string().min(1).max(200),
@@ -15,7 +15,7 @@ const Body = z.object({
   contentType: z
     .string()
     .min(1)
-    .refine((v) => v.startsWith('video/'), 'Must be a video file'),
+    .refine((v) => v.startsWith('image/'), 'Must be an image file'),
 });
 
 export async function POST(req: Request) {
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!checkUploadRate(user.id, 'video', { perTenMin: 30, perDay: 200 })) {
+  if (!checkUploadRate(user.id, 'photo', { perTenMin: 20, perDay: 80 })) {
     return NextResponse.json(
       { error: 'Too many uploads. Try again later.' },
       { status: 429 }
@@ -48,13 +48,11 @@ export async function POST(req: Request) {
     .createSignedUploadUrl(path);
 
   if (error || !data) {
-    // The bucket has to exist. Surface a helpful message instead of 500-ing
-    // silently — this saves debugging time on first deploy.
     return NextResponse.json(
       {
         error:
-          'Storage upload failed. Make sure a "workout-videos" bucket ' +
-          'exists in Supabase Storage and that the service role can write to it.',
+          'Storage upload failed. Make sure a "check-in-photos" bucket ' +
+          'exists in Supabase Storage.',
         details: error?.message,
       },
       { status: 500 }

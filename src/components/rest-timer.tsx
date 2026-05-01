@@ -38,29 +38,49 @@ export function RestTimer({
 
   const mm = Math.floor(remaining / 60);
   const ss = remaining % 60;
+  const done = remaining === 0;
+  const progress = seconds > 0 ? 1 - remaining / seconds : 1;
 
   return (
-    <div className="fixed inset-0 z-50 bg-neutral-950/95 backdrop-blur flex flex-col items-center justify-center px-6">
-      <p className="text-xs uppercase tracking-wide text-neutral-500 mb-3">Rest</p>
+    <div className="fixed inset-0 z-50 bg-bg/95 backdrop-blur-md flex flex-col items-center justify-center px-6">
+      {/* Soft radial glow behind timer */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(500px 500px at 50% 45%, rgba(34,197,94,0.12), transparent 70%)',
+        }}
+      />
+
+      <p className="relative text-xs uppercase tracking-[0.22em] text-faint mb-4">Rest</p>
+
       <p
-        className={`font-bold tabular-nums ${
-          remaining === 0 ? 'text-emerald-400' : 'text-neutral-100'
+        className={`relative font-bold tabular-nums tracking-tight transition-colors ${
+          done ? 'text-primary-hi animate-soft-pulse' : 'text-text'
         }`}
-        style={{ fontSize: '7rem', lineHeight: 1 }}
+        style={{ fontSize: '7.5rem', lineHeight: 1 }}
       >
         {mm}:{ss.toString().padStart(2, '0')}
       </p>
 
-      <div className="mt-10 flex gap-2">
+      {/* Progress bar */}
+      <div className="relative mt-6 h-1 w-56 rounded-full bg-surface-2 overflow-hidden">
+        <div
+          className="h-full bg-primary transition-all duration-300"
+          style={{ width: `${Math.round(progress * 100)}%` }}
+        />
+      </div>
+
+      <div className="relative mt-10 flex gap-2">
         {PRESETS.map((s) => (
           <button
             key={s}
             type="button"
             onClick={() => setSeconds(s)}
-            className={`h-11 px-5 rounded-lg text-sm font-medium border transition-colors ${
+            className={`h-11 px-5 rounded-xl text-sm font-medium border transition-all ${
               seconds === s
-                ? 'bg-neutral-800 border-neutral-600 text-neutral-100'
-                : 'border-neutral-800 text-neutral-400 hover:border-neutral-700'
+                ? 'bg-primary/15 border-primary/50 text-primary-hi ring-1 ring-primary/30'
+                : 'border-border text-muted hover:border-border-strong hover:text-text'
             }`}
           >
             {s / 60} min
@@ -71,9 +91,9 @@ export function RestTimer({
       <button
         type="button"
         onClick={onDone}
-        className="mt-10 w-full max-w-xs h-14 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-base font-semibold transition-colors"
+        className="relative mt-10 w-full max-w-xs h-14 rounded-2xl bg-primary hover:bg-primary-hi active:bg-primary-press text-bg text-base font-semibold transition-all shadow-[0_10px_40px_-12px_rgba(34,197,94,0.7)]"
       >
-        {remaining === 0 ? 'Next set' : 'Start now'}
+        {done ? 'Next set' : 'Start now'}
       </button>
     </div>
   );

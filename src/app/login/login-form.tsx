@@ -105,12 +105,12 @@ export function LoginForm() {
             value={d}
             onChange={(e) => set(i, e.target.value)}
             onKeyDown={(e) => onKey(i, e)}
-            className="h-16 w-12 text-center text-3xl font-semibold rounded-xl bg-neutral-900 border border-neutral-800 focus:outline-none focus:border-neutral-500 disabled:opacity-50 caret-transparent"
+            className="h-16 w-12 text-center text-3xl font-semibold rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/70 focus:ring-2 focus:ring-primary/30 transition-shadow disabled:opacity-50 caret-transparent"
           />
         ))}
       </div>
       {error && (
-        <p className="text-center text-sm text-red-400">{error}</p>
+        <p className="text-center text-sm text-danger">{error}</p>
       )}
     </form>
   );

@@ -43,21 +43,21 @@ export function BeginButton({
 
   if (confirming) {
     return (
-      <div className="rounded-xl border border-amber-700/50 bg-amber-950/40 p-4 space-y-3">
-        <p className="text-sm text-amber-100">
-          You&apos;ve trained the last 2 days. Start <strong>{dayLabel}</strong> anyway?
+      <div className="rounded-2xl border border-warn/35 bg-warn/10 p-4 space-y-3">
+        <p className="text-sm text-warn">
+          You&apos;ve trained the last 2 days. Start <strong className="font-semibold">{dayLabel}</strong> anyway?
         </p>
         <div className="flex gap-2">
           <button
             onClick={() => setConfirming(false)}
-            className="flex-1 h-11 rounded-lg border border-neutral-700 text-sm font-medium"
+            className="flex-1 h-11 rounded-xl border border-border text-sm font-medium text-text hover:bg-surface-2 transition-colors"
           >
             Not now
           </button>
           <button
             onClick={go}
             disabled={busy}
-            className="flex-1 h-11 rounded-lg bg-amber-600 text-white text-sm font-medium disabled:opacity-50"
+            className="flex-1 h-11 rounded-xl bg-warn/90 hover:bg-warn text-bg text-sm font-semibold disabled:opacity-50 transition-colors"
           >
             Start anyway
           </button>
@@ -70,7 +70,7 @@ export function BeginButton({
     <button
       onClick={() => (warn ? setConfirming(true) : go())}
       disabled={busy}
-      className="w-full h-14 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-base font-semibold disabled:opacity-50 transition-colors"
+      className="w-full h-14 rounded-2xl bg-primary hover:bg-primary-hi active:bg-primary-press text-bg text-base font-semibold disabled:opacity-50 transition-all shadow-[0_10px_40px_-12px_rgba(34,197,94,0.7)]"
     >
       {existingWorkoutId ? 'Resume workout' : `Begin ${dayLabel.split(' - ')[0] ?? 'workout'}`}
     </button>

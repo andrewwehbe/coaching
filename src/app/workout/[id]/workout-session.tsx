@@ -2,11 +2,13 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { Cue } from '@/lib/cue';
 import { CueDisplay } from './cue-display';
 import { RestTimer } from '@/components/rest-timer';
+import { OfflineBanner } from '@/components/offline-banner';
+import { enqueueAndSend, flushQueue, pendingCount } from '@/lib/offline-queue';
 
 export type LoggedSet = {
   setNumber: number;
@@ -58,6 +60,40 @@ export function WorkoutSession({
   const [resting, setResting] = useState(false);
   const [modal, setModal] = useState<ModalState>({ kind: 'none' });
   const [submitting, setSubmitting] = useState(false);
+  const [pending, setPending] = useState(0);
+  const [online, setOnline] = useState(true);
+
+  useEffect(() => {
+    setOnline(typeof navigator === 'undefined' ? true : navigator.onLine);
+    let cancelled = false;
+    async function refresh() {
+      const c = await pendingCount();
+      if (!cancelled) setPending(c);
+    }
+    async function flush() {
+      const sent = await flushQueue();
+      if (sent > 0) router.refresh();
+      await refresh();
+    }
+    refresh();
+    flush();
+    const onOnline = () => {
+      setOnline(true);
+      void flush();
+    };
+    const onOffline = () => setOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    const interval = window.setInterval(() => {
+      void refresh();
+    }, 4000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+      window.clearInterval(interval);
+    };
+  }, [router]);
 
   const currentIdx = useMemo(() => {
     return state.findIndex((e) => e.logStatus == null);
@@ -107,14 +143,11 @@ export function WorkoutSession({
         body.rir = rir ? Number(rir) : null;
       }
       if (notes) body.notes = notes;
-      if (videoUrl) body.videoUrl = videoUrl;
+      // videoUrl actually holds the bucket-relative storage path; server expects videoPath.
+      if (videoUrl) body.videoPath = videoUrl;
 
-      const res = await fetch(`/api/client/workout/${workoutId}/set`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
+      const res = await enqueueAndSend(`/api/client/workout/${workoutId}/set`, body);
+      if (!res.ok && res.status !== 202) {
         const err = await res.json().catch(() => ({}));
         alert(err.error ?? 'Failed to save set');
         return;
@@ -182,12 +215,11 @@ export function WorkoutSession({
     if (modal.kind !== 'skip') return;
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/client/workout/${workoutId}/skip`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ exerciseId: modal.exerciseId, reason }),
+      const res = await enqueueAndSend(`/api/client/workout/${workoutId}/skip`, {
+        exerciseId: modal.exerciseId,
+        reason,
       });
-      if (!res.ok) {
+      if (!res.ok && res.status !== 202) {
         alert('Failed to skip');
         return;
       }
@@ -207,12 +239,11 @@ export function WorkoutSession({
     if (modal.kind !== 'pain') return;
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/client/workout/${workoutId}/pain`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ exerciseId: modal.exerciseId, reason }),
+      const res = await enqueueAndSend(`/api/client/workout/${workoutId}/pain`, {
+        exerciseId: modal.exerciseId,
+        reason,
       });
-      if (!res.ok) {
+      if (!res.ok && res.status !== 202) {
         alert('Failed to send pain report');
         return;
       }
@@ -250,7 +281,7 @@ export function WorkoutSession({
         setVideoError(e.error ?? 'Upload prep failed');
         return;
       }
-      const { uploadUrl, publicUrl } = await presign.json();
+      const { uploadUrl, path } = await presign.json();
       const put = await fetch(uploadUrl, {
         method: 'PUT',
         headers: { 'content-type': file.type || 'video/mp4' },
@@ -260,7 +291,8 @@ export function WorkoutSession({
         setVideoError('Upload failed');
         return;
       }
-      setVideoUrl(publicUrl);
+      // Store the storage path; server will sign on read for playback.
+      setVideoUrl(path);
     } finally {
       setVideoBusy(false);
     }
@@ -269,10 +301,8 @@ export function WorkoutSession({
   async function completeWorkout() {
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/client/workout/${workoutId}/done`, {
-        method: 'POST',
-      });
-      if (!res.ok) {
+      const res = await enqueueAndSend(`/api/client/workout/${workoutId}/done`, {});
+      if (!res.ok && res.status !== 202) {
         alert('Failed to complete workout');
         return;
       }
@@ -286,20 +316,25 @@ export function WorkoutSession({
   if (doneNow || (!current && completedCount > 0)) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center px-6 text-center space-y-6">
-        <h1 className="text-3xl font-bold">Workout done.</h1>
-        <p className="text-neutral-400">
+        <div className="h-20 w-20 rounded-full bg-primary/15 ring-1 ring-primary/40 flex items-center justify-center shadow-[0_0_60px_-10px_rgba(34,197,94,0.7)]">
+          <svg className="h-10 w-10 text-primary-hi" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <h1 className="text-3xl font-bold tracking-tight">Workout done.</h1>
+        <p className="text-muted">
           {completedCount} of {state.length} exercises logged.
         </p>
         {!doneNow && (
           <button
             onClick={completeWorkout}
             disabled={submitting}
-            className="h-14 px-8 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-50"
+            className="h-14 px-8 rounded-2xl bg-primary hover:bg-primary-hi text-bg font-semibold disabled:opacity-50 transition-colors shadow-[0_10px_40px_-12px_rgba(34,197,94,0.7)]"
           >
             Finish & save
           </button>
         )}
-        <Link href="/today" className="text-emerald-400 underline">
+        <Link href="/today" className="text-primary-hi hover:text-primary text-sm transition-colors">
           Back to today
         </Link>
       </main>
@@ -310,7 +345,7 @@ export function WorkoutSession({
     return (
       <main className="flex flex-1 flex-col items-center justify-center px-6 text-center space-y-4">
         <h1 className="text-2xl font-semibold">No exercises today.</h1>
-        <Link href="/today" className="text-emerald-400 underline">
+        <Link href="/today" className="text-primary-hi hover:text-primary transition-colors">
           Back to today
         </Link>
       </main>
@@ -321,33 +356,43 @@ export function WorkoutSession({
 
   return (
     <main className="flex flex-1 flex-col px-5 py-6 max-w-md w-full mx-auto">
-      <header className="flex items-center justify-between mb-4 text-sm text-neutral-400">
-        <Link href="/today" className="hover:text-neutral-200">
+      <header className="flex items-center justify-between mb-5 text-sm">
+        <Link href="/today" className="text-muted hover:text-text transition-colors">
           ← {dayLabel}
         </Link>
-        <span>
+        <span className="font-medium text-faint tabular-nums">
           {completedCount} / {state.length}
         </span>
       </header>
 
+      <OfflineBanner online={online} pending={pending} />
+
+      {/* Progress bar */}
+      <div className="mb-6 h-1 w-full rounded-full bg-surface-2 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-primary transition-all duration-500"
+          style={{ width: `${state.length ? (completedCount / state.length) * 100 : 0}%` }}
+        />
+      </div>
+
       {current.coachNote && (
-        <div className="mb-4 rounded-xl border border-blue-700/40 bg-blue-950/30 px-4 py-3 text-sm text-blue-100">
-          <p className="text-xs uppercase tracking-wide text-blue-300 mb-1">From your coach</p>
-          <p>{current.coachNote}</p>
+        <div className="mb-5 rounded-2xl border border-accent/30 bg-accent/8 px-4 py-3 text-sm">
+          <p className="text-xs uppercase tracking-wide text-accent mb-1 font-medium">From your coach</p>
+          <p className="text-text">{current.coachNote}</p>
         </div>
       )}
 
-      <p className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
+      <p className="text-xs uppercase tracking-[0.18em] text-faint mb-1.5">
         Exercise {current.position}
       </p>
-      <h1 className="text-3xl font-bold leading-tight mb-2">{current.name}</h1>
-      <p className="text-sm text-neutral-400 mb-5">{current.prescriptionRaw ?? '—'}</p>
+      <h1 className="text-3xl font-bold leading-tight tracking-tight mb-2">{current.name}</h1>
+      <p className="text-sm text-muted mb-5">{current.prescriptionRaw ?? '—'}</p>
 
       <CueDisplay cue={current.cue} />
 
       {isFirstSetOverall && (
-        <div className="mt-5 rounded-xl border border-amber-700/40 bg-amber-950/30 p-4 text-sm text-amber-100">
-          <strong className="text-amber-50">Warmup first.</strong> Do at least one
+        <div className="mt-5 rounded-2xl border border-warn/35 bg-warn/10 p-4 text-sm text-warn">
+          <strong className="font-semibold">Warmup first.</strong> Do at least one
           warmup set with light weight and ensure form is perfect before logging
           working sets.
         </div>
@@ -358,15 +403,17 @@ export function WorkoutSession({
           <h2 className="text-lg font-semibold">
             Set {setNumber}
             {current.prescribedSets ? (
-              <span className="text-neutral-500 text-sm font-normal ml-1.5">
+              <span className="text-faint text-sm font-normal ml-1.5">
                 of {current.prescribedSets}
               </span>
             ) : null}
           </h2>
           {current.sets.length > 0 && (
-            <p className="text-xs text-neutral-500">
+            <p className="text-xs text-muted">
               Last:{' '}
-              {summarizeSet(current.sets[current.sets.length - 1], current.isCardio)}
+              <span className="text-text font-medium tabular-nums">
+                {summarizeSet(current.sets[current.sets.length - 1], current.isCardio)}
+              </span>
             </p>
           )}
         </div>
@@ -395,7 +442,7 @@ export function WorkoutSession({
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Notes (optional)"
           rows={2}
-          className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 focus:outline-none focus:border-neutral-600 text-sm"
+          className="w-full px-3 py-2 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-sm transition-shadow placeholder:text-faint"
         />
 
         <VideoUpload
@@ -410,14 +457,14 @@ export function WorkoutSession({
           <button
             type="button"
             onClick={() => setModal({ kind: 'pain', exerciseId: current.id, name: current.name })}
-            className="flex-1 h-11 rounded-lg border border-red-700/40 text-red-300 text-sm font-medium hover:bg-red-950/40"
+            className="flex-1 h-11 rounded-xl border border-danger/40 text-danger text-sm font-medium hover:bg-danger/10 transition-colors"
           >
             Report pain
           </button>
           <button
             type="button"
             onClick={() => setModal({ kind: 'skip', exerciseId: current.id, name: current.name })}
-            className="flex-1 h-11 rounded-lg border border-neutral-700 text-neutral-300 text-sm font-medium hover:bg-neutral-900"
+            className="flex-1 h-11 rounded-xl border border-border text-muted text-sm font-medium hover:bg-surface-2 hover:text-text transition-colors"
           >
             Skip exercise
           </button>
@@ -427,7 +474,7 @@ export function WorkoutSession({
           type="button"
           onClick={submitSet}
           disabled={submitting || isFormEmpty(current.isCardio, weight, reps, cardioMin)}
-          className="w-full h-14 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-base font-semibold disabled:opacity-50 transition-colors"
+          className="w-full h-14 rounded-2xl bg-primary hover:bg-primary-hi active:bg-primary-press text-bg text-base font-semibold disabled:opacity-40 disabled:shadow-none transition-all shadow-[0_10px_40px_-12px_rgba(34,197,94,0.7)]"
         >
           {isLastPrescribed ? 'Log final set' : `Log set ${setNumber}`}
         </button>
@@ -436,7 +483,7 @@ export function WorkoutSession({
           <button
             type="button"
             onClick={addExtraSet}
-            className="w-full text-center text-sm text-neutral-400 hover:text-neutral-200"
+            className="w-full text-center text-sm text-muted hover:text-text transition-colors"
           >
             Add an extra set
           </button>
@@ -446,7 +493,7 @@ export function WorkoutSession({
           <button
             type="button"
             onClick={moveToNextExercise}
-            className="w-full text-center text-sm text-neutral-400 hover:text-neutral-200"
+            className="w-full text-center text-sm text-muted hover:text-text transition-colors"
           >
             Done with this exercise
           </button>
@@ -520,27 +567,27 @@ function StrengthFields({
     <div className="space-y-3">
       <div className="flex gap-2">
         <div className="flex-1">
-          <label className="block text-xs text-neutral-500 mb-1">Weight</label>
+          <label className="block text-xs text-faint mb-1">Weight</label>
           <input
             type="number"
             inputMode="decimal"
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
-            className="w-full h-12 px-3 rounded-lg bg-neutral-900 border border-neutral-800 focus:outline-none focus:border-neutral-600 text-lg"
+            className="w-full h-12 px-3 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-lg tabular-nums transition-shadow"
           />
         </div>
         <div className="w-20">
-          <label className="block text-xs text-neutral-500 mb-1">Unit</label>
-          <div className="grid grid-cols-2 gap-1 h-12">
+          <label className="block text-xs text-faint mb-1">Unit</label>
+          <div className="grid grid-cols-2 gap-1 h-12 p-1 rounded-xl bg-surface border border-border">
             {(['kg', 'lb'] as const).map((u) => (
               <button
                 key={u}
                 type="button"
                 onClick={() => setUnit(u)}
-                className={`text-sm font-medium rounded-md ${
+                className={`text-sm font-medium rounded-lg transition-colors ${
                   unit === u
-                    ? 'bg-neutral-800 text-neutral-100'
-                    : 'border border-neutral-800 text-neutral-400'
+                    ? 'bg-primary/15 text-primary-hi ring-1 ring-primary/40'
+                    : 'text-muted hover:text-text'
                 }`}
               >
                 {u}
@@ -551,23 +598,23 @@ function StrengthFields({
       </div>
       <div className="flex gap-2">
         <div className="flex-1">
-          <label className="block text-xs text-neutral-500 mb-1">Reps</label>
+          <label className="block text-xs text-faint mb-1">Reps</label>
           <input
             type="number"
             inputMode="numeric"
             value={reps}
             onChange={(e) => setReps(e.target.value)}
-            className="w-full h-12 px-3 rounded-lg bg-neutral-900 border border-neutral-800 focus:outline-none focus:border-neutral-600 text-lg"
+            className="w-full h-12 px-3 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-lg tabular-nums transition-shadow"
           />
         </div>
         <div className="flex-1">
-          <label className="block text-xs text-neutral-500 mb-1">RIR (optional)</label>
+          <label className="block text-xs text-faint mb-1">RIR (optional)</label>
           <input
             type="number"
             inputMode="numeric"
             value={rir}
             onChange={(e) => setRir(e.target.value)}
-            className="w-full h-12 px-3 rounded-lg bg-neutral-900 border border-neutral-800 focus:outline-none focus:border-neutral-600 text-lg"
+            className="w-full h-12 px-3 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-lg tabular-nums transition-shadow"
           />
         </div>
       </div>
@@ -586,7 +633,7 @@ function CardioFields({
 }) {
   return (
     <div>
-      <label className="block text-xs text-neutral-500 mb-1">
+      <label className="block text-xs text-faint mb-1">
         Minutes {cardioType ? `(${cardioType})` : ''}
       </label>
       <input
@@ -594,7 +641,7 @@ function CardioFields({
         inputMode="numeric"
         value={minutes}
         onChange={(e) => setMinutes(e.target.value)}
-        className="w-full h-12 px-3 rounded-lg bg-neutral-900 border border-neutral-800 focus:outline-none focus:border-neutral-600 text-lg"
+        className="w-full h-12 px-3 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-lg tabular-nums transition-shadow"
       />
     </div>
   );
@@ -615,12 +662,12 @@ function VideoUpload({
 }) {
   if (videoUrl) {
     return (
-      <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/50 px-3 py-2 text-sm">
-        <span className="text-neutral-300">📹 Video attached</span>
+      <div className="flex items-center justify-between rounded-xl border border-primary/30 bg-primary/8 px-3 py-2.5 text-sm">
+        <span className="text-primary-hi font-medium">📹 Video attached</span>
         <button
           type="button"
           onClick={onClear}
-          className="text-neutral-500 hover:text-neutral-300"
+          className="text-muted hover:text-text transition-colors"
         >
           Remove
         </button>
@@ -629,8 +676,8 @@ function VideoUpload({
   }
   return (
     <label
-      className={`flex items-center justify-center gap-2 rounded-lg border border-dashed border-neutral-700 px-3 py-3 text-sm cursor-pointer ${
-        busy ? 'opacity-50 pointer-events-none' : 'hover:border-neutral-500'
+      className={`flex items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong px-3 py-3 text-sm text-muted cursor-pointer transition-colors ${
+        busy ? 'opacity-50 pointer-events-none' : 'hover:border-primary/50 hover:text-text'
       }`}
     >
       <span>{busy ? 'Uploading…' : '📹 Add video (optional, ≤ 25 MB)'}</span>
@@ -643,7 +690,7 @@ function VideoUpload({
           if (f) onPick(f);
         }}
       />
-      {error && <p className="text-xs text-red-400 ml-2">{error}</p>}
+      {error && <p className="text-xs text-danger ml-2">{error}</p>}
     </label>
   );
 }
@@ -667,23 +714,23 @@ function ReasonModal({
 }) {
   const [text, setText] = useState('');
   return (
-    <div className="fixed inset-0 z-50 bg-neutral-950/80 backdrop-blur flex items-end sm:items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-neutral-900 rounded-2xl border border-neutral-800 p-5 space-y-4">
+    <div className="fixed inset-0 z-50 bg-bg/85 backdrop-blur flex items-end sm:items-center justify-center p-4">
+      <div className="w-full max-w-sm bg-surface rounded-2xl border border-border p-5 space-y-4 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)]">
         <h3 className="text-lg font-semibold">{title}</h3>
-        {subtitle && <p className="text-sm text-neutral-400">{subtitle}</p>}
+        {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Reason"
           autoFocus
           rows={3}
-          className="w-full px-3 py-2 rounded-lg bg-neutral-950 border border-neutral-800 focus:outline-none focus:border-neutral-600 text-sm"
+          className="w-full px-3 py-2 rounded-xl bg-bg border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-sm transition-shadow placeholder:text-faint"
         />
         <div className="flex gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 h-11 rounded-lg border border-neutral-700 text-sm font-medium"
+            className="flex-1 h-11 rounded-xl border border-border text-sm font-medium text-text hover:bg-surface-2 transition-colors"
           >
             Cancel
           </button>
@@ -691,10 +738,10 @@ function ReasonModal({
             type="button"
             disabled={!text.trim() || submitting}
             onClick={() => onSubmit(text.trim())}
-            className={`flex-1 h-11 rounded-lg text-sm font-medium text-white disabled:opacity-50 ${
+            className={`flex-1 h-11 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors ${
               tone === 'danger'
-                ? 'bg-red-600 hover:bg-red-500'
-                : 'bg-emerald-600 hover:bg-emerald-500'
+                ? 'bg-danger hover:bg-danger/90 text-bg'
+                : 'bg-primary hover:bg-primary-hi text-bg'
             }`}
           >
             {submitLabel}
