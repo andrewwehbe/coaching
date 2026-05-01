@@ -1,10 +1,20 @@
 import { notFound, redirect } from 'next/navigation';
-import Link from 'next/link';
 
 import { readSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { buildCue, type Best, type Prescription } from '@/lib/cue';
-import { CueDisplay } from './cue-display';
+import { WorkoutSession, type ExerciseState } from './workout-session';
+
+type LoggedSetRow = {
+  set_number: number;
+  weight: number | null;
+  unit: 'kg' | 'lb' | null;
+  reps: number | null;
+  rir: number | null;
+  cardio_minutes: number | null;
+  video_url: string | null;
+  notes: string | null;
+};
 
 type Params = Promise<{ id: string }>;
 
@@ -42,90 +52,65 @@ export default async function WorkoutPage(props: { params: Params }) {
 
   const { data: logs } = await supa
     .from('exercise_logs')
-    .select('id, exercise_id, status')
+    .select('id, exercise_id, status, sets(set_number, weight, unit, reps, rir, cardio_minutes, video_url, notes)')
     .eq('workout_id', workout.id);
-  const loggedIds = new Set((logs ?? []).map((l) => l.exercise_id));
 
-  // Find first un-logged exercise. If all logged, show summary.
-  const next = (exercises ?? []).find((e) => !loggedIds.has(e.id));
+  // Best efforts for each exercise's name_key.
+  const nameKeys = Array.from(new Set((exercises ?? []).map((e) => e.name_key)));
+  const bests = nameKeys.length
+    ? (
+        await supa
+          .from('best_efforts')
+          .select('exercise_name_key, best_weight, best_unit, best_reps')
+          .eq('client_id', user.id)
+          .in('exercise_name_key', nameKeys)
+      ).data ?? []
+    : [];
+  const bestByKey = new Map(bests.map((b) => [b.exercise_name_key, b]));
 
-  if (!next) {
-    return (
-      <main className="flex flex-1 flex-col items-center justify-center px-6 text-center space-y-4">
-        <h1 className="text-2xl font-semibold">Workout done.</h1>
-        <p className="text-neutral-400">Set entry + completion lands in M2.</p>
-        <Link href="/today" className="text-emerald-400 underline">Back to today</Link>
-      </main>
-    );
-  }
-
-  // Best effort across all this client's exercises with the same name_key.
-  const { data: best } = await supa
-    .from('best_efforts')
-    .select('best_weight, best_unit, best_reps')
-    .eq('client_id', user.id)
-    .eq('exercise_name_key', next.name_key)
-    .maybeSingle();
-
-  const bestEffort: Best | null = best
-    ? { weight: best.best_weight, unit: best.best_unit, reps: best.best_reps }
-    : null;
-
-  const rx: Prescription = {
-    setsPrescribed: next.prescribed_sets,
-    repMin: next.rep_min,
-    repMax: next.rep_max,
-  };
-  const cue = buildCue(bestEffort, rx);
-
-  const completed = (logs ?? []).length;
-  const total = (exercises ?? []).length;
+  const states: ExerciseState[] = (exercises ?? []).map((ex) => {
+    const log = (logs ?? []).find((l) => l.exercise_id === ex.id) ?? null;
+    const best = bestByKey.get(ex.name_key) ?? null;
+    const bestEffort: Best | null = best
+      ? { weight: best.best_weight, unit: best.best_unit, reps: best.best_reps }
+      : null;
+    const rx: Prescription = {
+      setsPrescribed: ex.prescribed_sets,
+      repMin: ex.rep_min,
+      repMax: ex.rep_max,
+    };
+    return {
+      id: ex.id,
+      name: ex.name,
+      position: ex.position,
+      prescriptionRaw: ex.prescription_raw,
+      prescribedSets: ex.prescribed_sets,
+      repMin: ex.rep_min,
+      repMax: ex.rep_max,
+      coachNote: ex.coach_note,
+      isCardio: ex.is_cardio,
+      cardioType: ex.cardio_type,
+      cue: buildCue(bestEffort, rx),
+      logStatus: log?.status ?? null,
+      sets: ((log?.sets as LoggedSetRow[] | undefined) ?? []).map((s) => ({
+        setNumber: s.set_number,
+        weight: s.weight,
+        unit: s.unit,
+        reps: s.reps,
+        rir: s.rir,
+        cardioMinutes: s.cardio_minutes,
+        videoUrl: s.video_url,
+        notes: s.notes,
+      })),
+    };
+  });
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-6 max-w-md w-full mx-auto">
-      <header className="flex items-center justify-between mb-4 text-sm text-neutral-400">
-        <Link href="/today" className="hover:text-neutral-200">← {day?.label ?? 'Workout'}</Link>
-        <span>
-          {completed} / {total}
-        </span>
-      </header>
-
-      <div className="flex-1 flex flex-col">
-        {next.coach_note && (
-          <div className="mb-4 rounded-xl border border-blue-700/40 bg-blue-950/30 px-4 py-3 text-sm text-blue-100">
-            <p className="text-xs uppercase tracking-wide text-blue-300 mb-1">From your coach</p>
-            <p>{next.coach_note}</p>
-          </div>
-        )}
-
-        <p className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
-          Exercise {next.position}
-        </p>
-        <h1 className="text-3xl font-bold leading-tight mb-2">{next.name}</h1>
-        <p className="text-sm text-neutral-400 mb-6">
-          {next.prescription_raw ?? '—'}
-        </p>
-
-        <CueDisplay cue={cue} />
-
-        <div className="mt-6 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 text-sm text-neutral-300">
-          <strong className="text-neutral-100">Warmup first.</strong> Do at least one
-          warmup set with light weight and ensure form is perfect before logging
-          working sets.
-        </div>
-
-        <div className="mt-auto pt-8">
-          <button
-            disabled
-            className="w-full h-14 rounded-xl bg-neutral-800 text-neutral-500 font-semibold cursor-not-allowed"
-          >
-            Begin Set 1 (M2)
-          </button>
-          <p className="mt-3 text-center text-xs text-neutral-500">
-            Set entry, rest timer, video upload, skip & pain reporting all land in M2.
-          </p>
-        </div>
-      </div>
-    </main>
+    <WorkoutSession
+      workoutId={workout.id}
+      dayLabel={day?.label ?? 'Workout'}
+      completed={!!workout.completed_at}
+      exercises={states}
+    />
   );
 }
