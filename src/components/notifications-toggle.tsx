@@ -9,6 +9,22 @@ type State =
   | 'pending' // user just clicked Enable
   | 'on'; // permission granted AND we have a SW subscription
 
+async function syncSubscriptionToServer(sub: PushSubscription): Promise<boolean> {
+  try {
+    const res = await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        subscription: sub.toJSON(),
+        userAgent: navigator.userAgent,
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -56,7 +72,14 @@ export function NotificationsToggle() {
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
-      setState(sub ? 'on' : 'off');
+      if (sub) {
+        // Self-heal: re-POST the existing subscription so the server row
+        // exists even if a previous subscribe POST failed.
+        await syncSubscriptionToServer(sub);
+        setState('on');
+      } else {
+        setState('off');
+      }
     } catch {
       setState('off');
     }
@@ -86,17 +109,9 @@ export function NotificationsToggle() {
           applicationServerKey: urlBase64ToUint8Array(vapid),
         });
       }
-      const res = await fetch('/api/push/subscribe', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          subscription: sub.toJSON(),
-          userAgent: navigator.userAgent,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        setError(err.error ?? 'Subscribe failed');
+      const ok = await syncSubscriptionToServer(sub);
+      if (!ok) {
+        setError('Subscribe failed');
         setState('off');
         return;
       }
@@ -125,9 +140,28 @@ export function NotificationsToggle() {
 
   if (state === 'on') {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-primary-hi" title="Notifications on">
-        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-        Notifications on
+      <span className="inline-flex items-center gap-2">
+        <span className="inline-flex items-center gap-1 text-xs text-primary-hi" title="Notifications on">
+          <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+          On
+        </span>
+        <button
+          type="button"
+          onClick={async () => {
+            const res = await fetch('/api/push/test', { method: 'POST' });
+            if (!res.ok) {
+              const e = await res.json().catch(() => ({}));
+              setError(e.error ?? 'Test failed');
+            } else {
+              setError(null);
+            }
+          }}
+          className="text-xs text-muted hover:text-text underline transition-colors"
+          title="Send a test notification to this device"
+        >
+          test
+        </button>
+        {error && <span className="text-xs text-danger">{error}</span>}
       </span>
     );
   }
