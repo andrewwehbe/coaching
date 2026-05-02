@@ -37,7 +37,8 @@ export default async function SessionsPage({
     .from('workouts')
     .select('id, client_id, day_id, started_at, completed_at, days(label), clients(name)')
     .gte('week_start', weekStartIso)
-    .order('started_at', { ascending: false })
+    .not('completed_at', 'is', null)
+    .order('completed_at', { ascending: false })
     .limit(200);
 
   const workoutIds = (workouts ?? []).map((w) => w.id);
@@ -130,7 +131,7 @@ export default async function SessionsPage({
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-muted">No sessions yet this week.</p>
+        <p className="text-sm text-muted">No completed sessions yet this week.</p>
       ) : (
         <ul className="space-y-2">
           {filtered.map((r) => (
@@ -148,8 +149,7 @@ export default async function SessionsPage({
                       )}
                     </p>
                     <p className="text-xs text-faint mt-0.5">
-                      {format(new Date(r.started_at), 'EEE MMM d, h:mma')}
-                      {!r.completed_at && <span className="ml-2 text-warn">in progress</span>}
+                      {format(new Date(r.completed_at ?? r.started_at), 'EEE MMM d, h:mma')}
                       {r.pain_count > 0 && (
                         <span className="ml-2 text-warn">· {r.pain_count} pain</span>
                       )}
@@ -167,6 +167,15 @@ export default async function SessionsPage({
           ))}
         </ul>
       )}
+
+      <div className="mt-8 flex justify-center">
+        <Link
+          href="/coach/sessions/all"
+          className="text-sm text-primary-hi hover:text-primary px-4 py-2 rounded-xl border border-border hover:border-primary/40 transition-colors"
+        >
+          All history →
+        </Link>
+      </div>
     </main>
   );
 }
