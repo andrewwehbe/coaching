@@ -115,7 +115,7 @@ export function ProgramUploader({ clientId }: { clientId: string }) {
           }`}
         >
           <p className="text-sm font-medium">
-            {file ? file.name : 'Drop .xlsx here or click to browse'}
+            {file ? file.name : 'Tap to choose an .xlsx from your phone'}
           </p>
           <p className="text-xs text-neutral-500 mt-1">
             {busy ? 'Parsing…' : 'Last sheet in workbook is used.'}
