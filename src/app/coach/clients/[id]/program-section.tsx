@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { useState } from 'react';
 
 type Exercise = {
@@ -19,13 +21,20 @@ type Day = {
 };
 
 export function ProgramSection({ days, hasProgram }: { days: Day[]; hasProgram: boolean }) {
+  const params = useParams<{ id: string }>();
   if (!hasProgram) {
     return (
       <section className="mb-6">
         <h2 className="text-sm uppercase tracking-wide text-neutral-500 mb-2">Program</h2>
-        <p className="rounded-xl border border-neutral-800 bg-neutral-900/30 px-4 py-3 text-sm text-neutral-400">
-          No active program. Upload one from the program manager.
-        </p>
+        <div className="rounded-xl border border-border bg-surface/40 px-4 py-4 text-sm">
+          <p className="text-muted mb-3">No active program yet.</p>
+          <Link
+            href={`/coach/clients/${params.id}/program`}
+            className="inline-block rounded-lg bg-primary hover:bg-primary-hi text-bg px-4 py-2 text-sm font-semibold transition-colors"
+          >
+            Upload .xlsx
+          </Link>
+        </div>
       </section>
     );
   }
