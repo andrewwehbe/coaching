@@ -2,9 +2,7 @@ import Link from 'next/link';
 import { format, startOfWeek, formatISO } from 'date-fns';
 
 import { requireCoach } from '@/lib/coach-guard';
-import { db, signMediaUrls } from '@/lib/supabase';
-
-const VIDEO_BUCKET = 'workout-videos';
+import { db } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +18,6 @@ type WorkoutRow = {
   set_count: number;
   video_count: number;
   pain_count: number;
-  first_video_url: string | null;
 };
 
 export default async function SessionsPage({
@@ -69,32 +66,21 @@ export default async function SessionsPage({
     : { data: [] as never };
 
   const setCount = new Map<string, number>();
-  const videoByWorkout = new Map<string, string>();
   const videoCountByWorkout = new Map<string, number>();
-  const allVideoPaths: string[] = [];
   for (const s of sets ?? []) {
     const wid = logToWorkout.get(s.exercise_log_id);
     if (!wid) continue;
     setCount.set(wid, (setCount.get(wid) ?? 0) + 1);
     if (s.video_url) {
       videoCountByWorkout.set(wid, (videoCountByWorkout.get(wid) ?? 0) + 1);
-      if (!videoByWorkout.has(wid)) videoByWorkout.set(wid, s.video_url);
-      allVideoPaths.push(s.video_url);
     }
   }
-
-  const signed = await signMediaUrls(VIDEO_BUCKET, [...new Set(allVideoPaths)]);
-  const signedByPath = new Map<string, string>();
-  [...new Set(allVideoPaths)].forEach((p, i) => {
-    if (signed[i]) signedByPath.set(p, signed[i]!);
-  });
 
   const rows: WorkoutRow[] = (workouts ?? []).map((w) => {
     const days = w.days as unknown;
     const day = (Array.isArray(days) ? days[0] : days) as { label?: string } | null;
     const cs = w.clients as unknown;
     const c = (Array.isArray(cs) ? cs[0] : cs) as { name?: string } | null;
-    const firstVideo = videoByWorkout.get(w.id) ?? null;
     return {
       id: w.id,
       client_id: w.client_id,
@@ -105,7 +91,6 @@ export default async function SessionsPage({
       set_count: setCount.get(w.id) ?? 0,
       video_count: videoCountByWorkout.get(w.id) ?? 0,
       pain_count: painByWorkout.get(w.id) ?? 0,
-      first_video_url: firstVideo ? signedByPath.get(firstVideo) ?? null : null,
     };
   });
 
@@ -149,44 +134,35 @@ export default async function SessionsPage({
       ) : (
         <ul className="space-y-2">
           {filtered.map((r) => (
-            <li key={r.id} className="rounded-2xl border border-border bg-surface/60 p-4">
-              <div className="flex items-baseline justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-medium truncate">
-                    {r.client_name}
-                    {r.day_label && <span className="text-muted font-normal"> · {r.day_label}</span>}
-                  </p>
-                  <p className="text-xs text-faint mt-0.5">
-                    {format(new Date(r.started_at), 'EEE MMM d, h:mma')}
-                    {!r.completed_at && <span className="ml-2 text-warn">in progress</span>}
-                    {r.pain_count > 0 && <span className="ml-2 text-warn">· {r.pain_count} pain</span>}
-                  </p>
+            <li key={r.id}>
+              <Link
+                href={`/coach/sessions/${r.id}`}
+                className="block rounded-2xl border border-border bg-surface/60 hover:bg-surface hover:border-primary/40 transition-colors p-4"
+              >
+                <div className="flex items-baseline justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">
+                      {r.client_name}
+                      {r.day_label && (
+                        <span className="text-muted font-normal"> · {r.day_label}</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-faint mt-0.5">
+                      {format(new Date(r.started_at), 'EEE MMM d, h:mma')}
+                      {!r.completed_at && <span className="ml-2 text-warn">in progress</span>}
+                      {r.pain_count > 0 && (
+                        <span className="ml-2 text-warn">· {r.pain_count} pain</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-muted shrink-0">
+                    <span className="tabular-nums">{r.set_count} sets</span>
+                    {r.video_count > 0 && (
+                      <span className="tabular-nums text-primary-hi">▶ {r.video_count}</span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-muted shrink-0">
-                  <span className="tabular-nums">{r.set_count} sets</span>
-                  {r.video_count > 0 && (
-                    <span className="tabular-nums text-primary-hi">▶ {r.video_count}</span>
-                  )}
-                </div>
-              </div>
-              <div className="mt-3 flex items-center gap-2">
-                <Link
-                  href={`/coach/clients/${r.client_id}#workout-${r.id}`}
-                  className="text-xs text-primary-hi hover:text-primary"
-                >
-                  Open client →
-                </Link>
-              </div>
-              {r.first_video_url && (
-                // eslint-disable-next-line jsx-a11y/media-has-caption
-                <video
-                  src={r.first_video_url}
-                  controls
-                  preload="metadata"
-                  playsInline
-                  className="mt-3 max-h-72 w-full rounded-lg border border-border bg-black"
-                />
-              )}
+              </Link>
             </li>
           ))}
         </ul>
