@@ -48,15 +48,11 @@ export async function POST(req: Request) {
     .createSignedUploadUrl(path);
 
   if (error || !data) {
-    // The bucket has to exist. Surface a helpful message instead of 500-ing
-    // silently — this saves debugging time on first deploy.
+    // Log the underlying Supabase error server-side so we can debug, but
+    // don't ship infra error strings to the client.
+    if (error) console.error('upload-url:', error);
     return NextResponse.json(
-      {
-        error:
-          'Storage upload failed. Make sure a "workout-videos" bucket ' +
-          'exists in Supabase Storage and that the service role can write to it.',
-        details: error?.message,
-      },
+      { error: 'Could not start upload. Please try again.' },
       { status: 500 }
     );
   }

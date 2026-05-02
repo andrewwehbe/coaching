@@ -50,6 +50,7 @@ function isIOSSafariNotInstalled(): boolean {
 export function NotificationsToggle() {
   const [state, setState] = useState<State>('unknown');
   const [error, setError] = useState<string | null>(null);
+  const [showInstallHint, setShowInstallHint] = useState(false);
 
   useEffect(() => {
     void detect();
@@ -126,13 +127,39 @@ export function NotificationsToggle() {
 
   if (state === 'unsupported') {
     if (typeof window !== 'undefined' && isIOSSafariNotInstalled()) {
+      // iOS Safari ignores `title=` tooltips, so the hint must be a real
+      // tap-to-expand panel rather than a hover affordance.
       return (
-        <span
-          className="text-xs text-faint cursor-help shrink-0"
-          title="On iPhone, install the app first: Share → Add to Home Screen, then open from the home screen."
-        >
-          🔔 Install
-        </span>
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowInstallHint((v) => !v)}
+            className="inline-flex items-center gap-1 text-xs text-faint hover:text-muted transition-colors"
+            aria-expanded={showInstallHint}
+          >
+            🔔 Install
+          </button>
+          {showInstallHint && (
+            <div
+              className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-border bg-surface px-3 py-2.5 text-xs text-text shadow-lg z-50"
+              role="dialog"
+            >
+              To get notifications on iPhone, install the app first:
+              <span className="block mt-1.5 text-muted">
+                tap <strong className="text-text">Share</strong> →{' '}
+                <strong className="text-text">Add to Home Screen</strong>, then open the app from your
+                home screen.
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowInstallHint(false)}
+                className="mt-2 text-primary-hi hover:text-primary"
+              >
+                Got it
+              </button>
+            </div>
+          )}
+        </div>
       );
     }
     return null;

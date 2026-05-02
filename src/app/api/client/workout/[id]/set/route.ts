@@ -28,10 +28,8 @@ export async function POST(req: Request, props: { params: Params }) {
 
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: 'Invalid set payload', details: parsed.error.flatten() },
-      { status: 400 }
-    );
+    console.error('set: invalid payload', parsed.error.flatten());
+    return NextResponse.json({ error: 'Invalid set payload' }, { status: 400 });
   }
 
   const supa = db();

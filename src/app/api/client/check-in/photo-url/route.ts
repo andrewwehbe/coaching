@@ -48,13 +48,9 @@ export async function POST(req: Request) {
     .createSignedUploadUrl(path);
 
   if (error || !data) {
+    if (error) console.error('photo-url:', error);
     return NextResponse.json(
-      {
-        error:
-          'Storage upload failed. Make sure a "check-in-photos" bucket ' +
-          'exists in Supabase Storage.',
-        details: error?.message,
-      },
+      { error: 'Could not start upload. Please try again.' },
       { status: 500 }
     );
   }
