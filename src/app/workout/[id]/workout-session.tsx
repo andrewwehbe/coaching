@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { Cue } from '@/lib/cue';
 import { CueDisplay } from './cue-display';
@@ -95,11 +95,26 @@ export function WorkoutSession({
     };
   }, [router]);
 
-  const currentIdx = useMemo(() => {
-    return state.findIndex((e) => e.logStatus == null);
-  }, [state]);
-  const current = currentIdx >= 0 ? state[currentIdx] : null;
+  // Track the visible exercise as state so the client can jump around with
+  // Prev/Next. Starts at the first incomplete one. After they log a final
+  // set / skip / pain / "done", we auto-advance via advanceFrom().
+  const [currentIdx, setCurrentIdx] = useState(() => {
+    const i = exercises.findIndex((e) => e.logStatus == null);
+    return i >= 0 ? i : 0;
+  });
+  const current = state[currentIdx] ?? null;
   const completedCount = state.filter((e) => e.logStatus != null).length;
+  const allDone = state.length > 0 && completedCount === state.length;
+
+  function advanceFrom(updated: ExerciseState[], fromIdx: number): number {
+    for (let i = fromIdx + 1; i < updated.length; i++) {
+      if (updated[i].logStatus == null) return i;
+    }
+    for (let i = 0; i < fromIdx; i++) {
+      if (updated[i].logStatus == null) return i;
+    }
+    return fromIdx;
+  }
 
   // Set form state per exercise.
   const [weight, setWeight] = useState('');
@@ -155,8 +170,8 @@ export function WorkoutSession({
       }
 
       // Update local state.
-      setState((prev) =>
-        prev.map((e) =>
+      setState((prev) => {
+        const next = prev.map((e) =>
           e.id === current.id
             ? {
                 ...e,
@@ -173,11 +188,13 @@ export function WorkoutSession({
                     notes: (body.notes as string | null) ?? null,
                   },
                 ],
-                logStatus: isLastPrescribed ? 'completed' : null,
+                logStatus: (isLastPrescribed ? 'completed' : null) as ExerciseState['logStatus'],
               }
             : e
-        )
-      );
+        );
+        if (isLastPrescribed) setCurrentIdx((idx) => advanceFrom(next, idx));
+        return next;
+      });
 
       resetForm();
 
@@ -204,11 +221,13 @@ export function WorkoutSession({
   async function moveToNextExercise() {
     if (!current) return;
     // Manual "I'm done with this exercise" — same effect as auto-advance.
-    setState((prev) =>
-      prev.map((e) =>
-        e.id === current.id ? { ...e, logStatus: 'completed' } : e
-      )
-    );
+    setState((prev) => {
+      const next = prev.map((e) =>
+        e.id === current.id ? { ...e, logStatus: 'completed' as const } : e
+      );
+      setCurrentIdx((idx) => advanceFrom(next, idx));
+      return next;
+    });
     resetForm();
   }
 
@@ -224,11 +243,13 @@ export function WorkoutSession({
         alert('Failed to skip');
         return;
       }
-      setState((prev) =>
-        prev.map((e) =>
-          e.id === modal.exerciseId ? { ...e, logStatus: 'skipped' } : e
-        )
-      );
+      setState((prev) => {
+        const next = prev.map((e) =>
+          e.id === modal.exerciseId ? { ...e, logStatus: 'skipped' as const } : e
+        );
+        setCurrentIdx((idx) => advanceFrom(next, idx));
+        return next;
+      });
       setModal({ kind: 'none' });
       resetForm();
     } finally {
@@ -248,11 +269,13 @@ export function WorkoutSession({
         alert('Failed to send pain report');
         return;
       }
-      setState((prev) =>
-        prev.map((e) =>
-          e.id === modal.exerciseId ? { ...e, logStatus: 'pain' } : e
-        )
-      );
+      setState((prev) => {
+        const next = prev.map((e) =>
+          e.id === modal.exerciseId ? { ...e, logStatus: 'pain' as const } : e
+        );
+        setCurrentIdx((idx) => advanceFrom(next, idx));
+        return next;
+      });
       setModal({ kind: 'none' });
       resetForm();
     } finally {
@@ -328,7 +351,7 @@ export function WorkoutSession({
     }
   }
 
-  if (doneNow || (!current && completedCount > 0)) {
+  if (doneNow || allDone) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center px-6 text-center space-y-6">
         <div className="h-20 w-20 rounded-full bg-primary/15 ring-1 ring-primary/40 flex items-center justify-center shadow-[0_0_60px_-10px_rgba(34,197,94,0.7)]">
@@ -371,7 +394,7 @@ export function WorkoutSession({
 
   return (
     <main className="flex flex-1 flex-col px-5 py-6 max-w-md w-full mx-auto">
-      <header className="flex items-center justify-between mb-5 text-sm">
+      <header className="flex items-center justify-between mb-3 text-sm">
         <Link href="/today" className="text-muted hover:text-text transition-colors">
           ← {dayLabel}
         </Link>
@@ -379,6 +402,34 @@ export function WorkoutSession({
           {completedCount} / {state.length}
         </span>
       </header>
+
+      <nav className="flex items-center justify-between gap-2 mb-4">
+        <button
+          type="button"
+          onClick={() => {
+            setCurrentIdx((i) => Math.max(0, i - 1));
+            resetForm();
+          }}
+          disabled={currentIdx === 0}
+          className="flex-1 h-10 rounded-xl border border-border text-muted text-sm font-medium hover:bg-surface-2 hover:text-text transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          ← Prev
+        </button>
+        <span className="text-xs text-faint tabular-nums px-2">
+          {currentIdx + 1} of {state.length}
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            setCurrentIdx((i) => Math.min(state.length - 1, i + 1));
+            resetForm();
+          }}
+          disabled={currentIdx >= state.length - 1}
+          className="flex-1 h-10 rounded-xl border border-border text-muted text-sm font-medium hover:bg-surface-2 hover:text-text transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          Next →
+        </button>
+      </nav>
 
       <OfflineBanner online={online} pending={pending} />
 
@@ -399,6 +450,15 @@ export function WorkoutSession({
 
       <p className="text-xs uppercase tracking-[0.18em] text-faint mb-1.5">
         Exercise {current.position}
+        {current.logStatus === 'completed' && (
+          <span className="ml-2 text-primary-hi normal-case tracking-normal">· done</span>
+        )}
+        {current.logStatus === 'skipped' && (
+          <span className="ml-2 text-muted normal-case tracking-normal">· skipped</span>
+        )}
+        {current.logStatus === 'pain' && (
+          <span className="ml-2 text-warn normal-case tracking-normal">· pain reported</span>
+        )}
       </p>
       <h1 className="text-3xl font-bold leading-tight tracking-tight mb-2">{current.name}</h1>
       <p className="text-sm text-muted mb-5">{current.prescriptionRaw ?? '—'}</p>
