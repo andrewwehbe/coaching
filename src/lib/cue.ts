@@ -21,6 +21,13 @@ export type Cue =
       weight: number;
       unit: string;
       repFloor: number;
+    }
+  | {
+      // Prior best has weight but no reps recorded (legacy weight-only logs).
+      // Tell the client to keep the weight and start tracking reps.
+      kind: 'log_reps';
+      weight: number;
+      unit: string;
     };
 
 export type Best = {
@@ -36,8 +43,11 @@ export type Prescription = {
 };
 
 export function buildCue(best: Best | null, rx: Prescription): Cue {
-  if (!best || best.weight == null || best.reps == null) {
+  if (!best || best.weight == null) {
     return { kind: 'first' };
+  }
+  if (best.reps == null) {
+    return { kind: 'log_reps', weight: best.weight, unit: best.unit ?? '' };
   }
   const top = rx.repMax ?? rx.repMin ?? null;
   const bottom = rx.repMin ?? rx.repMax ?? null;

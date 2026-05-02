@@ -73,7 +73,9 @@ type Ex = {
   cardio_type: 'treadmill' | 'elliptical' | 'stairmaster' | null;
 };
 type Day = { label: string; exercises: Ex[]; rowIdxByExName: Map<string, number> };
-type Best = { weight: number; unit: 'kg' | 'lb'; reps: number };
+// reps can be null for legacy weight-only logs (e.g. ClientD's "60", "11 plates").
+// We still record the weight so the cue says "Keep XKG · log your reps".
+type Best = { weight: number; unit: 'kg' | 'lb'; reps: number | null };
 
 function normalize(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -90,7 +92,12 @@ function detectCardio(name: string): Ex['cardio_type'] {
   return null;
 }
 function normalizePrescription(s: string): string {
-  return s.replace(/×/g, 'x').replace(/[–—]/g, '-').trim();
+  return s
+    .replace(/×/g, 'x')
+    .replace(/[–—]/g, '-')
+    .replace(/\s*\/\/.*$/, '') // strip "// alternative" trailing comment
+    .replace(/^(\s*\d+)\s*\/\s*(\d+)/, '$1x$2') // "2/5-8" → "2x5-8" (ClientG typo)
+    .trim();
 }
 function parsePrescription(raw: string): {
   sets: number;
@@ -141,6 +148,11 @@ function parseCellSets(text: string): { weight: number | null; unit: 'kg' | 'lb'
       // cardio — ignored for best_efforts
       continue;
     }
+    // Skip Apps Script goal strings ("← GOAL: KEEP 215 · BEAT 6 REPS") and
+    // unfilled "Weight: Reps: RIR:" templates. Both are scratchpad noise the
+    // old sheet wrote into log cells; neither represents an actual logged set.
+    if (/←|goal\s*:/i.test(line)) continue;
+    if (/weight\s*:\s*reps?\s*:/i.test(line)) continue;
     const verbose = line.match(
       /weight\s*:\s*(\d+(?:\.\d+)?)\s*(kgs?|lbs?|lb)?\s*(?:reps?\s*:\s*(\d+(?:\s*-\s*\d+)?))?/i
     );
@@ -167,6 +179,45 @@ function parseCellSets(text: string): { weight: number | null; unit: 'kg' | 'lb'
         unit: (wur[2].toLowerCase().startsWith('lb') ? 'lb' : 'kg') as 'kg' | 'lb',
         reps: takeHigh(wur[3]),
       });
+      continue;
+    }
+    // Weight + reps without a unit: "7 5 reps", "12 8 reps".
+    const wnur = line.match(/^(\d+(?:\.\d+)?)\s+(\d+(?:\s*-\s*\d+)?)\s*reps?\b/i);
+    if (wnur) {
+      out.push({
+        weight: parseFloat(wnur[1]),
+        unit: 'kg' as const,
+        reps: takeHigh(wnur[2]),
+      });
+      continue;
+    }
+    // Permissive "weight + reps" — handles ClientG's "84 for 10", "17.5 lb 5-6",
+    // "40 kg 6", "65 6", "25 6-7", "15 kg for 10". Optional unit, optional
+    // "for"/"x" separator, no trailing "reps" word required.
+    const gen = line.match(
+      /^(\d+(?:\.\d+)?)\s*(kgs?|lbs?|lb)?\s*(?:for\s+|x\s*|×\s*)?(\d+(?:\s*-\s*\d+)?)\s*$/i
+    );
+    if (gen) {
+      const w = parseFloat(gen[1]);
+      const reps = takeHigh(gen[3]);
+      if (w >= 1 && w <= 500 && reps >= 1 && reps <= 100) {
+        const unit: 'kg' | 'lb' = (gen[2] ?? '').toLowerCase().startsWith('lb') ? 'lb' : 'kg';
+        out.push({ weight: w, unit, reps });
+        continue;
+      }
+    }
+    // Weight-only fallback: pull the first reasonable number from anywhere
+    // in the line. Catches "42.5 kgs", "11 plates", "60", "30 kg per side",
+    // "smith 18.75 each side". Reps stay null → cue becomes "Keep XKG · log
+    // your reps" so the client starts logging properly going forward.
+    const numMatch = line.match(/(\d+(?:\.\d+)?)/);
+    if (numMatch) {
+      const w = parseFloat(numMatch[1]);
+      // Sanity range drops typos like "46216" and bare-decimal junk like "0.35".
+      if (w >= 1 && w <= 500) {
+        const unit: 'kg' | 'lb' = /\blbs?\b/i.test(line) ? 'lb' : 'kg';
+        out.push({ weight: w, unit, reps: null });
+      }
     }
   }
   return out;
@@ -261,26 +312,35 @@ function computeBests(
         const cell = String(row[wc.col] ?? '').trim();
         const sets = parseCellSets(cell);
         for (const s of sets) {
-          if (s.weight == null || s.reps == null) continue;
-          if (
-            !cur ||
-            s.weight > cur.weight ||
-            (s.weight === cur.weight && s.reps > cur.reps)
-          ) {
+          if (s.weight == null) continue;
+          if (!cur) {
             cur = { weight: s.weight, unit: s.unit, reps: s.reps };
+            continue;
+          }
+          if (s.weight > cur.weight) {
+            cur = { weight: s.weight, unit: s.unit, reps: s.reps };
+          } else if (s.weight === cur.weight) {
+            // Same weight: prefer the entry that has reps. If both have reps,
+            // higher wins. If neither has reps, keep what we have.
+            if (cur.reps == null && s.reps != null) {
+              cur = { weight: s.weight, unit: s.unit, reps: s.reps };
+            } else if (cur.reps != null && s.reps != null && s.reps > cur.reps) {
+              cur = { weight: s.weight, unit: s.unit, reps: s.reps };
+            }
           }
         }
       }
       if (cur) {
         // Keep the best across all days that share the same name_key.
+        // (With per-day name_keys this rarely fires, but harmless.)
         const existing = bests.get(ex.name_key);
-        if (
+        const better =
           !existing ||
           cur.weight > existing.weight ||
-          (cur.weight === existing.weight && cur.reps > existing.reps)
-        ) {
-          bests.set(ex.name_key, cur);
-        }
+          (cur.weight === existing.weight &&
+            ((existing.reps == null && cur.reps != null) ||
+              (existing.reps != null && cur.reps != null && cur.reps > existing.reps)));
+        if (better) bests.set(ex.name_key, cur);
       }
     }
   }

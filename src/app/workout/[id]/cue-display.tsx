@@ -11,6 +11,19 @@ export function CueDisplay({ cue }: { cue: Cue }) {
     );
   }
 
+  if (cue.kind === 'log_reps') {
+    return (
+      <div className="relative rounded-2xl border border-primary/40 bg-primary/8 px-5 py-7 text-center overflow-hidden shadow-[0_0_60px_-20px_rgba(34,197,94,0.7)]">
+        <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
+        <p className="text-xs uppercase tracking-[0.18em] text-primary-hi mb-3 font-medium">Goal</p>
+        <p className="text-4xl font-bold text-text tracking-tight">
+          Keep <span className="text-primary-hi tabular-nums">{formatWeight(cue.weight, cue.unit)}</span>
+        </p>
+        <p className="text-base text-muted mt-2">Log your reps</p>
+      </div>
+    );
+  }
+
   if (cue.kind === 'keep') {
     return (
       <div className="relative rounded-2xl border border-primary/40 bg-primary/8 px-5 py-7 text-center overflow-hidden shadow-[0_0_60px_-20px_rgba(34,197,94,0.7)]">
