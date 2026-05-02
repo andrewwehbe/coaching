@@ -19,7 +19,7 @@ export default async function SessionDetailPage(props: { params: Params }) {
   const { data: workout } = await supa
     .from('workouts')
     .select(
-      'id, client_id, day_id, started_at, completed_at, week_start, is_deload, notes, days(label), clients(name)'
+      'id, client_id, day_id, started_at, completed_at, week_start, is_deload, days(label), clients(name)'
     )
     .eq('id', id)
     .maybeSingle();
@@ -143,12 +143,6 @@ export default async function SessionDetailPage(props: { params: Params }) {
           </Link>
         </p>
       </header>
-
-      {workout.notes && (
-        <p className="mb-5 rounded-xl border border-border bg-surface/60 px-4 py-3 text-sm text-muted">
-          {workout.notes}
-        </p>
-      )}
 
       {exercises.length === 0 ? (
         <p className="text-sm text-muted">No exercises logged yet.</p>
