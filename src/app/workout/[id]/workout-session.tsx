@@ -111,6 +111,7 @@ export function WorkoutSession({
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
+  const [videoProgress, setVideoProgress] = useState(0);
 
   function resetForm() {
     setWeight('');
@@ -262,6 +263,7 @@ export function WorkoutSession({
   async function uploadVideo(file: File) {
     setVideoBusy(true);
     setVideoError(null);
+    setVideoProgress(0);
     try {
       if (file.size > 25 * 1024 * 1024) {
         setVideoError('Max 25 MB.');
@@ -282,16 +284,29 @@ export function WorkoutSession({
         return;
       }
       const { uploadUrl, path } = await presign.json();
-      const put = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: { 'content-type': file.type || 'video/mp4' },
-        body: file,
+
+      // XHR instead of fetch so we can show real upload progress — without
+      // it, slow phone uploads look indistinguishable from a hung request.
+      const ok = await new Promise<boolean>((resolveP) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', uploadUrl);
+        xhr.setRequestHeader('content-type', file.type || 'video/mp4');
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            setVideoProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        };
+        xhr.onload = () => resolveP(xhr.status >= 200 && xhr.status < 300);
+        xhr.onerror = () => resolveP(false);
+        xhr.ontimeout = () => resolveP(false);
+        xhr.timeout = 5 * 60 * 1000; // 5 minutes hard cap
+        xhr.send(file);
       });
-      if (!put.ok) {
-        setVideoError('Upload failed');
+
+      if (!ok) {
+        setVideoError('Upload failed. Check signal and try again.');
         return;
       }
-      // Store the storage path; server will sign on read for playback.
       setVideoUrl(path);
     } finally {
       setVideoBusy(false);
@@ -448,6 +463,7 @@ export function WorkoutSession({
         <VideoUpload
           videoUrl={videoUrl}
           busy={videoBusy}
+          progress={videoProgress}
           error={videoError}
           onPick={uploadVideo}
           onClear={() => setVideoUrl(null)}
@@ -650,12 +666,14 @@ function CardioFields({
 function VideoUpload({
   videoUrl,
   busy,
+  progress,
   error,
   onPick,
   onClear,
 }: {
   videoUrl: string | null;
   busy: boolean;
+  progress: number;
   error: string | null;
   onPick: (file: File) => void;
   onClear: () => void;
@@ -674,24 +692,41 @@ function VideoUpload({
       </div>
     );
   }
+  if (busy) {
+    return (
+      <div className="rounded-xl border border-primary/40 bg-primary/8 px-3 py-3 text-sm">
+        <div className="flex items-center justify-between text-primary-hi mb-2">
+          <span>Uploading video…</span>
+          <span className="tabular-nums">{progress}%</span>
+        </div>
+        <div className="h-1.5 w-full rounded-full bg-surface-2 overflow-hidden">
+          <div
+            className="h-full bg-primary transition-all duration-200"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          Phone uploads can take up to a minute. Don&apos;t close the app.
+        </p>
+      </div>
+    );
+  }
   return (
-    <label
-      className={`flex items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong px-3 py-3 text-sm text-muted cursor-pointer transition-colors ${
-        busy ? 'opacity-50 pointer-events-none' : 'hover:border-primary/50 hover:text-text'
-      }`}
-    >
-      <span>{busy ? 'Uploading…' : '📹 Add video (optional, ≤ 25 MB)'}</span>
-      <input
-        type="file"
-        accept="video/*"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onPick(f);
-        }}
-      />
-      {error && <p className="text-xs text-danger ml-2">{error}</p>}
-    </label>
+    <div className="space-y-1">
+      <label className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong px-3 py-3 text-sm text-muted cursor-pointer transition-colors hover:border-primary/50 hover:text-text">
+        <span>📹 Add video (optional, ≤ 25 MB)</span>
+        <input
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) onPick(f);
+          }}
+        />
+      </label>
+      {error && <p className="text-xs text-danger px-1">{error}</p>}
+    </div>
   );
 }
 

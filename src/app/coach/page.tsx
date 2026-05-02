@@ -37,26 +37,30 @@ export default async function CoachHome() {
 
   return (
     <main className="flex flex-1 flex-col px-5 py-6 max-w-3xl w-full mx-auto">
-      <header className="flex items-center justify-between mb-7">
-        <div>
-          <p className="text-sm text-muted">Coach</p>
-          <h1 className="text-2xl font-semibold tracking-tight">{user.name}</h1>
-        </div>
-        <div className="flex items-center gap-4">
-          <NotificationsToggle />
-          <Link
-            href="/coach/alerts"
-            className="text-sm text-muted hover:text-text transition-colors"
-          >
-            Alerts
-          </Link>
+      <header className="mb-7">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-muted">Coach</p>
+            <h1 className="text-2xl font-semibold tracking-tight truncate">{user.name}</h1>
+          </div>
           <Link
             href="/coach/clients/new"
-            className="text-sm rounded-xl bg-primary hover:bg-primary-hi text-bg px-3.5 py-1.5 font-semibold transition-colors shadow-[0_8px_24px_-10px_rgba(34,197,94,0.6)]"
+            className="shrink-0 text-sm rounded-xl bg-primary hover:bg-primary-hi text-bg px-3.5 py-1.5 font-semibold transition-colors shadow-[0_8px_24px_-10px_rgba(34,197,94,0.6)]"
           >
             + Client
           </Link>
-          <LogoutButton />
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <NotificationsToggle />
+          <div className="flex items-center gap-4">
+            <Link
+              href="/coach/alerts"
+              className="text-sm text-muted hover:text-text transition-colors"
+            >
+              Alerts
+            </Link>
+            <LogoutButton />
+          </div>
         </div>
       </header>
 
