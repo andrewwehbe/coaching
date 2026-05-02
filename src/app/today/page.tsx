@@ -33,7 +33,7 @@ export default async function TodayPage() {
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-sm text-muted">Hey,</p>
-            <h1 className="text-2xl font-semibold tracking-tight truncate">{user.name}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight truncate">{user.greetingName}</h1>
           </div>
           <NotificationsToggle />
         </div>

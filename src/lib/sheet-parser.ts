@@ -212,8 +212,13 @@ type ParsedPrescription = {
   is_cardio: boolean;
 };
 
+function normalizePrescription(raw: string): string {
+  // Unicode multiply (×) and en-dash/em-dash → ASCII so the regex matches.
+  return raw.replace(/×/g, 'x').replace(/[–—]/g, '-').trim();
+}
+
 function parsePrescription(raw: string): ParsedPrescription | null {
-  const text = raw.trim();
+  const text = normalizePrescription(raw);
   const cardio = text.match(CARDIO_RE);
   if (cardio) {
     return {
@@ -233,11 +238,13 @@ function parsePrescription(raw: string): ParsedPrescription | null {
   const hi = m[3] ? parseInt(m[3], 10) : lo;
   const tail = (m[4] ?? '').trim();
 
+  // Tail may be "@N RIR" (capture the RIR) OR "@<weight>" / freeform notes
+  // (ignore — keep prescription valid). Don't fail the whole exercise just
+  // because the trainer wrote "@10" as a starting-weight hint.
   let rir: string | null = null;
   if (tail) {
     const rirMatch = tail.match(/^(\d+(?:\s*-\s*\d+)?)\s*rir\b/i);
     if (rirMatch) rir = rirMatch[1].replace(/\s+/g, '');
-    else return null;
   }
 
   return {

@@ -89,6 +89,9 @@ function detectCardio(name: string): Ex['cardio_type'] {
   if (/\bstair\s*master\b|\bstairmaster\b|\bstair[-\s]*climber\b/.test(n)) return 'stairmaster';
   return null;
 }
+function normalizePrescription(s: string): string {
+  return s.replace(/×/g, 'x').replace(/[–—]/g, '-').trim();
+}
 function parsePrescription(raw: string): {
   sets: number;
   rep_min: number | null;
@@ -96,7 +99,8 @@ function parsePrescription(raw: string): {
   rir: string | null;
   is_cardio: boolean;
 } | null {
-  const cardio = raw.match(CARDIO_RE);
+  const text = normalizePrescription(raw);
+  const cardio = text.match(CARDIO_RE);
   if (cardio) {
     return {
       sets: parseInt(cardio[1], 10),
@@ -106,16 +110,16 @@ function parsePrescription(raw: string): {
       is_cardio: true,
     };
   }
-  const m = raw.match(PRESCRIPTION_RE);
+  const m = text.match(PRESCRIPTION_RE);
   if (!m) return null;
   const lo = parseInt(m[2], 10);
   const hi = m[3] ? parseInt(m[3], 10) : lo;
+  // Non-RIR @ tails (e.g., "@10" weight hints) are ignored, not fatal.
   let rir: string | null = null;
   const tail = (m[4] ?? '').trim();
   if (tail) {
     const rirMatch = tail.match(/^(\d+(?:\s*-\s*\d+)?)\s*rir\b/i);
     if (rirMatch) rir = rirMatch[1].replace(/\s+/g, '');
-    else return null;
   }
   return {
     sets: parseInt(m[1], 10),
@@ -191,6 +195,22 @@ function parseFile(file: Buffer | ArrayBuffer): {
 
   const days: Day[] = [];
   let cur: Day | null = null;
+
+  // Some sheets put the first day label in col A of the header row alongside
+  // the "Week N" headers (e.g. Sweetie's "Day 1"). If row 0 col A is non-empty,
+  // not itself a Week header, and col B is empty, treat as the implicit first
+  // day. Mirrors sheet-parser.ts behavior so seed and live upload agree.
+  const headerColA = String(header[0] ?? '').trim();
+  const headerColB = String(header[PRESCRIPTION_COL] ?? '').trim();
+  if (
+    headerColA &&
+    !headerColB &&
+    !/^week\s*\d+$/i.test(headerColA) &&
+    headerColA.toLowerCase() !== 'name'
+  ) {
+    cur = { label: headerColA, exercises: [], rowIdxByExName: new Map() };
+    days.push(cur);
+  }
 
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r] ?? [];

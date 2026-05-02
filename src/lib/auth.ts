@@ -14,7 +14,14 @@ export const RATE_LIMIT_24H = 20;
 
 export type SessionUser =
   | { type: 'coach'; id: string; name: string }
-  | { type: 'client'; id: string; name: string; active: boolean };
+  | {
+      type: 'client';
+      id: string;
+      name: string;
+      /** Name shown to the client themselves on /today; falls back to `name`. */
+      greetingName: string;
+      active: boolean;
+    };
 
 function newToken(): string {
   return randomBytes(32).toString('hex');
@@ -105,7 +112,7 @@ export async function attemptPinLogin(
     supa.from('coaches').select('id,name,pin_hash,pin_attempts,pin_locked_until'),
     supa
       .from('clients')
-      .select('id,name,pin_hash,pin_attempts,pin_locked_until,active')
+      .select('id,name,greeting_name,pin_hash,pin_attempts,pin_locked_until,active')
       .eq('active', true),
   ]);
 
@@ -141,7 +148,13 @@ export async function attemptPinLogin(
         .eq('id', c.id);
       return {
         ok: true,
-        user: { type: 'client', id: c.id, name: c.name, active: c.active },
+        user: {
+          type: 'client',
+          id: c.id,
+          name: c.name,
+          greetingName: c.greeting_name ?? c.name,
+          active: c.active,
+        },
       };
     }
   }
@@ -240,11 +253,17 @@ export async function readSession(): Promise<SessionUser | null> {
   } else {
     const { data: c } = await supa
       .from('clients')
-      .select('id,name,active')
+      .select('id,name,greeting_name,active')
       .eq('id', session.user_id)
       .maybeSingle();
     if (!c) return null;
-    return { type: 'client', id: c.id, name: c.name, active: c.active };
+    return {
+      type: 'client',
+      id: c.id,
+      name: c.name,
+      greetingName: c.greeting_name ?? c.name,
+      active: c.active,
+    };
   }
 }
 
