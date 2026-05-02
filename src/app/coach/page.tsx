@@ -43,6 +43,7 @@ export default async function CoachHome() {
             <p className="text-sm text-muted">Coach</p>
             <h1 className="text-2xl font-semibold tracking-tight truncate">{user.name}</h1>
           </div>
+          <NotificationsToggle />
           <Link
             href="/coach/clients/new"
             className="shrink-0 text-sm rounded-xl bg-primary hover:bg-primary-hi text-bg px-3.5 py-1.5 font-semibold transition-colors shadow-[0_8px_24px_-10px_rgba(34,197,94,0.6)]"
@@ -50,17 +51,14 @@ export default async function CoachHome() {
             + Client
           </Link>
         </div>
-        <div className="mt-3 flex items-center justify-between gap-3">
-          <NotificationsToggle />
-          <div className="flex items-center gap-4">
-            <Link
-              href="/coach/alerts"
-              className="text-sm text-muted hover:text-text transition-colors"
-            >
-              Alerts
-            </Link>
-            <LogoutButton />
-          </div>
+        <div className="mt-3 flex items-center justify-end gap-4">
+          <Link
+            href="/coach/alerts"
+            className="text-sm text-muted hover:text-text transition-colors"
+          >
+            Alerts
+          </Link>
+          <LogoutButton />
         </div>
       </header>
 

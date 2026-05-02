@@ -29,13 +29,15 @@ export default async function TodayPage() {
 
   return (
     <main className="flex flex-1 flex-col px-5 py-6 max-w-md w-full mx-auto">
-      <header className="flex items-center justify-between mb-7">
-        <div>
-          <p className="text-sm text-muted">Hey,</p>
-          <h1 className="text-2xl font-semibold tracking-tight">{user.name}</h1>
-        </div>
-        <div className="flex items-center gap-4">
+      <header className="mb-7">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-muted">Hey,</p>
+            <h1 className="text-2xl font-semibold tracking-tight truncate">{user.name}</h1>
+          </div>
           <NotificationsToggle />
+        </div>
+        <div className="mt-3 flex items-center justify-end gap-4">
           <Link
             href="/check-in"
             className="text-sm text-muted hover:text-text transition-colors"

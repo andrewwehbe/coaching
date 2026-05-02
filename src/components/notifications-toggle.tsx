@@ -128,10 +128,10 @@ export function NotificationsToggle() {
     if (typeof window !== 'undefined' && isIOSSafariNotInstalled()) {
       return (
         <span
-          className="text-xs text-faint cursor-help"
+          className="text-xs text-faint cursor-help shrink-0"
           title="On iPhone, install the app first: Share → Add to Home Screen, then open from the home screen."
         >
-          🔔 Install to enable
+          🔔 Install
         </span>
       );
     }
@@ -140,29 +140,23 @@ export function NotificationsToggle() {
 
   if (state === 'on') {
     return (
-      <span className="inline-flex items-center gap-2">
-        <span className="inline-flex items-center gap-1 text-xs text-primary-hi" title="Notifications on">
-          <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-          On
-        </span>
-        <button
-          type="button"
-          onClick={async () => {
-            const res = await fetch('/api/push/test', { method: 'POST' });
-            if (!res.ok) {
-              const e = await res.json().catch(() => ({}));
-              setError(e.error ?? 'Test failed');
-            } else {
-              setError(null);
-            }
-          }}
-          className="text-xs text-muted hover:text-text underline transition-colors"
-          title="Send a test notification to this device"
-        >
-          test
-        </button>
-        {error && <span className="text-xs text-danger">{error}</span>}
-      </span>
+      <button
+        type="button"
+        onClick={async () => {
+          const res = await fetch('/api/push/test', { method: 'POST' });
+          if (!res.ok) {
+            const e = await res.json().catch(() => ({}));
+            setError(e.error ?? 'Test failed');
+          } else {
+            setError(null);
+          }
+        }}
+        className="inline-flex items-center gap-1.5 text-xs text-primary-hi hover:text-primary transition-colors shrink-0"
+        title={error ?? 'Notifications on — tap to send a test'}
+      >
+        <BellIcon className="h-3.5 w-3.5" />
+        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+      </button>
     );
   }
 
@@ -171,13 +165,20 @@ export function NotificationsToggle() {
       type="button"
       onClick={enable}
       disabled={state === 'pending'}
-      className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg border border-primary/40 bg-primary/10 text-primary-hi hover:bg-primary/15 px-2.5 py-1 transition-colors disabled:opacity-50"
+      className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg border border-primary/40 bg-primary/10 text-primary-hi hover:bg-primary/15 px-2 py-1 transition-colors disabled:opacity-50 shrink-0"
       title={error ?? 'Enable push notifications'}
+      aria-label="Enable notifications"
     >
-      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-      </svg>
-      {state === 'pending' ? 'Enabling…' : 'Enable notifications'}
+      <BellIcon className="h-3.5 w-3.5" />
+      <span>{state === 'pending' ? 'Enabling…' : 'Enable'}</span>
     </button>
+  );
+}
+
+function BellIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+    </svg>
   );
 }
