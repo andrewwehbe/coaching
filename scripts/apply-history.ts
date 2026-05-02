@@ -78,6 +78,10 @@ type Best = { weight: number; unit: 'kg' | 'lb'; reps: number };
 function normalize(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ');
 }
+// Per-day scoped key: same name on different days tracks separately.
+function scopedKey(dayIndex: number, name: string): string {
+  return `d${dayIndex}::${normalize(name)}`;
+}
 function detectCardio(name: string): Ex['cardio_type'] {
   const n = name.toLowerCase();
   if (/\btreadmill\b/.test(n)) return 'treadmill';
@@ -201,9 +205,10 @@ function parseFile(file: Buffer | ArrayBuffer): {
     if (a && b && cur) {
       const p = parsePrescription(b);
       if (!p) continue;
+      const dayIdx = days.length; // 1-based — current day was just pushed
       const ex: Ex = {
         name: a,
-        name_key: normalize(a),
+        name_key: scopedKey(dayIdx, a),
         prescription_raw: b,
         prescribed_sets: p.sets,
         rep_min: p.rep_min,

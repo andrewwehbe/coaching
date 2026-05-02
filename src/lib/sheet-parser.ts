@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 
-import { normalize } from './exercise-name';
+import { normalize, nameKeyFor } from './exercise-name';
 
 export type ParsedExercise = {
   name: string;
@@ -159,15 +159,19 @@ export function parseSheet(file: ArrayBuffer | Buffer): ParseResult {
       continue;
     }
 
-    const key = normalize(a);
-    if (seenInDay.has(key)) {
+    const dedupeKey = normalize(a);
+    if (seenInDay.has(dedupeKey)) {
       errors.push({
         row: r + 1,
         message: `Duplicate exercise "${a}" in day "${currentDay.label}".`,
       });
       continue;
     }
-    seenInDay.add(key);
+    seenInDay.add(dedupeKey);
+    // Scope name_key by 1-based day_index so the same exercise on different
+    // days tracks bests + plateau independently.
+    const dayIndex = days.length; // 1-based: this day was just pushed (or about to be)
+    const key = nameKeyFor(dayIndex, a);
 
     currentDay.exercises.push({
       name: a,

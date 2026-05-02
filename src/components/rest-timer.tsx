@@ -95,6 +95,15 @@ export function RestTimer({
       >
         {done ? 'Next set' : 'Start now'}
       </button>
+
+      <button
+        type="button"
+        onClick={onDone}
+        className="relative mt-3 text-sm text-muted hover:text-text underline underline-offset-4 transition-colors"
+        title="Skip the in-app timer and use your phone's timer (so you can lock the screen)"
+      >
+        I&apos;ll time it myself
+      </button>
     </div>
   );
 }
