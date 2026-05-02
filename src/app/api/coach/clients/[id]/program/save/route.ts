@@ -81,6 +81,12 @@ export async function POST(req: Request, ctx: { params: Params }) {
   const incomingDayIds = new Set<string>();
   const incomingExerciseIds = new Set<string>();
 
+  // Mirrors payload.days shape and is returned to the client so it can merge
+  // newly-issued ids back into editor state. Without this, re-saving after a
+  // successful insert tries to insert the same row again and hits the
+  // (day_id, position) unique constraint with a 409.
+  const savedDays: Array<{ id: string; exercises: Array<{ id: string }> }> = [];
+
   for (const [di, day] of payload.days.entries()) {
     const dayIndex = di + 1;
     let dayId = day.id;
@@ -117,6 +123,8 @@ export async function POST(req: Request, ctx: { params: Params }) {
       existingExByName.set(ex.id, { id: ex.id, name: ex.name, name_key: ex.name_key });
     }
 
+    const savedExercises: Array<{ id: string }> = [];
+
     for (const [ei, ex] of day.exercises.entries()) {
       const position = ei + 1;
       const rx = parsePrescription(ex.prescription_raw)!;
@@ -146,6 +154,7 @@ export async function POST(req: Request, ctx: { params: Params }) {
           console.error('ex update', error);
           return NextResponse.json({ error: 'Failed to update exercise' }, { status: 500 });
         }
+        savedExercises.push({ id: ex.id });
       } else {
         const { data: row, error } = await supa
           .from('exercises')
@@ -169,8 +178,11 @@ export async function POST(req: Request, ctx: { params: Params }) {
           return NextResponse.json({ error: 'Failed to create exercise' }, { status: 500 });
         }
         incomingExerciseIds.add(row.id);
+        savedExercises.push({ id: row.id });
       }
     }
+
+    savedDays.push({ id: dayId!, exercises: savedExercises });
   }
 
   // Archive (soft-delete) exercises that were removed. Keep the row so old
@@ -197,5 +209,5 @@ export async function POST(req: Request, ctx: { params: Params }) {
     url: '/today',
   }).catch(() => {});
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, days: savedDays });
 }

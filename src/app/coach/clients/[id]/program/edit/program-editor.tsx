@@ -122,10 +122,33 @@ export function ProgramEditor({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ days: cleaned }),
       });
-      const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      const body = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        days?: Array<{ id: string; exercises: Array<{ id: string }> }>;
+      };
       if (!res.ok || !body.ok) {
         setError(body.error ?? 'Save failed');
         return;
+      }
+      // Merge server-issued ids back into local state so a follow-up save
+      // updates these rows instead of trying to insert them again — the latter
+      // hits the (day_id, position) unique constraint with a 409.
+      if (body.days) {
+        setDays((prev) =>
+          prev.map((d, di) => {
+            const saved = body.days?.[di];
+            if (!saved) return d;
+            return {
+              ...d,
+              id: saved.id,
+              exercises: d.exercises.map((e, ei) => {
+                const sx = saved.exercises[ei];
+                return sx ? { ...e, id: sx.id } : e;
+              }),
+            };
+          })
+        );
       }
       setSavedAt(Date.now());
       router.refresh();
