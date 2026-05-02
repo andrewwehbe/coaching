@@ -13,11 +13,14 @@ export type AlertType =
   | 'check_in_submitted';
 
 // Which alert types are urgent enough to wake the coach's phone.
-// Workout start/complete/check-ins are nice-to-know, not push-worthy.
+// Workout start/complete are now pushable so the coach knows in real time
+// when a client begins or finishes a session. Check-ins stay quiet.
 const PUSHABLE: ReadonlySet<AlertType> = new Set([
   'pain',
   'stalled',
   'missed_workout',
+  'workout_started',
+  'workout_completed',
 ]);
 
 export async function insertAlert(args: {
@@ -35,9 +38,15 @@ export async function insertAlert(args: {
   });
 
   if (PUSHABLE.has(args.type)) {
-    // Fire-and-forget; never block the request on push delivery.
+    const title =
+      args.type === 'pain' ? '⚠️ Pain reported'
+      : args.type === 'workout_started' ? '🏋️ Started'
+      : args.type === 'workout_completed' ? '✅ Finished'
+      : args.type === 'missed_workout' ? 'Behind on workouts'
+      : args.type === 'stalled' ? 'Stalled exercise'
+      : 'Coaching';
     void sendPushToCoach({
-      title: args.type === 'pain' ? '⚠️ Pain reported' : 'Coaching',
+      title,
       body: args.message,
       url: '/coach',
     }).catch(() => {});

@@ -6,6 +6,7 @@ import { buildTodaySchedule } from '@/lib/schedule';
 import { LogoutButton } from '@/components/logout-button';
 import { NotificationsToggle } from '@/components/notifications-toggle';
 import { BeginButton } from './begin-button';
+import { MissedButton } from './missed-button';
 
 export default async function TodayPage() {
   const user = await readSession();
@@ -68,8 +69,8 @@ export default async function TodayPage() {
                   : 'border-border bg-surface/60'
               }`}
             >
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
                   <p className={`text-xs uppercase tracking-wide ${isSuggested ? 'text-primary-hi' : 'text-faint'}`}>
                     {d.label.split(' - ')[0] ?? `Day ${d.dayIndex}`}
                   </p>
@@ -77,7 +78,10 @@ export default async function TodayPage() {
                     {d.label.split(' - ').slice(1).join(' - ') || d.label}
                   </p>
                 </div>
-                <StatusChip status={d.status} />
+                <div className="flex items-center gap-2 shrink-0">
+                  <StatusChip status={d.status} />
+                  {d.status === 'upcoming' && <MissedButton dayId={d.dayId} label={d.label} />}
+                </div>
               </div>
             </li>
           );
@@ -100,7 +104,7 @@ export default async function TodayPage() {
   );
 }
 
-function StatusChip({ status }: { status: 'done' | 'upcoming' | 'in_progress' }) {
+function StatusChip({ status }: { status: 'done' | 'upcoming' | 'in_progress' | 'missed' }) {
   if (status === 'done') {
     return (
       <span className="text-xs px-2.5 py-1 rounded-full bg-primary/15 text-primary-hi border border-primary/30 font-medium">
@@ -112,6 +116,13 @@ function StatusChip({ status }: { status: 'done' | 'upcoming' | 'in_progress' })
     return (
       <span className="text-xs px-2.5 py-1 rounded-full bg-accent/10 text-accent border border-accent/30 font-medium">
         In progress
+      </span>
+    );
+  }
+  if (status === 'missed') {
+    return (
+      <span className="text-xs px-2.5 py-1 rounded-full bg-warn/10 text-warn border border-warn/30 font-medium">
+        Missed
       </span>
     );
   }

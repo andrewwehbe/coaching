@@ -351,6 +351,24 @@ export function WorkoutSession({
     }
   }
 
+  async function cancelWorkout() {
+    if (!confirm('Cancel this workout? Nothing will be saved.')) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/client/workout/${workoutId}/cancel`, { method: 'POST' });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        alert(e.error ?? 'Could not cancel');
+        return;
+      }
+      router.push('/today');
+      router.refresh();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+  const noSetsLogged = state.every((e) => e.sets.length === 0);
+
   if (doneNow || allDone) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center px-6 text-center space-y-6">
@@ -574,6 +592,27 @@ export function WorkoutSession({
             Done with this exercise
           </button>
         )}
+
+        <div className="pt-3 mt-3 border-t border-border flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={cancelWorkout}
+            disabled={submitting}
+            className="text-xs text-faint hover:text-warn transition-colors"
+          >
+            Cancel workout
+          </button>
+          {!noSetsLogged && (
+            <button
+              type="button"
+              onClick={completeWorkout}
+              disabled={submitting}
+              className="text-xs text-primary-hi hover:text-primary transition-colors"
+            >
+              End workout
+            </button>
+          )}
+        </div>
       </section>
 
       {resting && <RestTimer onDone={() => setResting(false)} />}

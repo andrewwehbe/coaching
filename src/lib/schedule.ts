@@ -8,7 +8,7 @@ export type ScheduledDay = {
   dayId: string;
   dayIndex: number;
   label: string;
-  status: 'done' | 'upcoming' | 'in_progress';
+  status: 'done' | 'upcoming' | 'in_progress' | 'missed';
   workoutId?: string;
 };
 
@@ -60,7 +60,7 @@ export async function buildTodaySchedule(clientId: string): Promise<TodaySchedul
   // Workouts started this week.
   const { data: thisWeek } = await supa
     .from('workouts')
-    .select('id, day_id, completed_at, started_at')
+    .select('id, day_id, completed_at, started_at, is_missed')
     .eq('client_id', clientId)
     .gte('week_start', formatISO(weekStart, { representation: 'date' }));
 
@@ -81,7 +81,7 @@ export async function buildTodaySchedule(clientId: string): Promise<TodaySchedul
   }
   const threeInARowWarning = trainedDays.has(1) && trainedDays.has(2);
 
-  const byDayId = new Map<string, { id: string; completed_at: string | null; started_at: string }>();
+  const byDayId = new Map<string, { id: string; completed_at: string | null; started_at: string; is_missed: boolean | null }>();
   for (const w of thisWeek ?? []) {
     // Keep the latest workout per day.
     const existing = byDayId.get(w.day_id);
@@ -93,7 +93,11 @@ export async function buildTodaySchedule(clientId: string): Promise<TodaySchedul
   const scheduled: ScheduledDay[] = (days ?? []).map((d) => {
     const w = byDayId.get(d.id);
     let status: ScheduledDay['status'] = 'upcoming';
-    if (w) status = w.completed_at ? 'done' : 'in_progress';
+    if (w) {
+      if (w.is_missed) status = 'missed';
+      else if (w.completed_at) status = 'done';
+      else status = 'in_progress';
+    }
     return {
       dayId: d.id,
       dayIndex: d.day_index,
@@ -104,6 +108,7 @@ export async function buildTodaySchedule(clientId: string): Promise<TodaySchedul
   });
 
   // Suggested day: first in_progress, else first upcoming, else null.
+  // (Missed days are explicitly *not* suggested — client said they won't do it.)
   const suggested =
     scheduled.find((d) => d.status === 'in_progress') ??
     scheduled.find((d) => d.status === 'upcoming') ??

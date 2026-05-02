@@ -59,6 +59,12 @@ export default async function CoachHome() {
             Sessions
           </Link>
           <Link
+            href="/coach/check-ins"
+            className="text-sm text-muted hover:text-text transition-colors"
+          >
+            Check-ins
+          </Link>
+          <Link
             href="/coach/alerts"
             className="text-sm text-muted hover:text-text transition-colors"
           >
