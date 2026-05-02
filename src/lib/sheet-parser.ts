@@ -214,7 +214,19 @@ export type ParsedPrescription = {
 
 function normalizePrescription(raw: string): string {
   // Unicode multiply (×) and en-dash/em-dash → ASCII so the regex matches.
-  return raw.replace(/×/g, 'x').replace(/[–—]/g, '-').trim();
+  let s = raw.replace(/×/g, 'x').replace(/[–—]/g, '-').trim();
+  // Superset prescriptions: "3x6-8 / 3x8-10 @3 RIR" — two exercises share a
+  // prescription separated by " / ". Take the first half as canonical, then
+  // re-attach any trailing "@N RIR" tail. Matching exercise name uses "//".
+  const supersetMatch = s.match(/^(\s*\d+\s*x\s*\d+(?:\s*-\s*\d+)?)\s*\/\s*\d+\s*x\s*\d+(?:\s*-\s*\d+)?\s*(@.*)?$/i);
+  if (supersetMatch) {
+    s = supersetMatch[1] + (supersetMatch[2] ? ' ' + supersetMatch[2] : '');
+  }
+  // Trailing "// alternative" comment ("2x5-8 // 3x5-8") — strip.
+  s = s.replace(/\s*\/\/.*$/, '').trim();
+  // Slash typo: "2/5-8" → "2x5-8".
+  s = s.replace(/^(\s*\d+)\s*\/\s*(\d+)/, '$1x$2');
+  return s.trim();
 }
 
 export function parsePrescription(raw: string): ParsedPrescription | null {
