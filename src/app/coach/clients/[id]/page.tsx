@@ -117,13 +117,21 @@ export default async function ClientDetailPage(props: { params: Params }) {
         </div>
       </header>
 
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         <Link
           href={`/coach/clients/${client.id}/log`}
           className="rounded-xl bg-primary hover:bg-primary-hi text-bg px-4 py-2 text-sm font-semibold transition-colors shadow-[0_8px_24px_-10px_rgba(34,197,94,0.6)]"
         >
           Log on behalf
         </Link>
+        {program && (
+          <Link
+            href={`/coach/clients/${client.id}/program/edit`}
+            className="rounded-xl border border-border bg-surface/60 hover:bg-surface px-4 py-2 text-sm font-medium transition-colors"
+          >
+            Edit program
+          </Link>
+        )}
       </div>
 
       <ClientActions

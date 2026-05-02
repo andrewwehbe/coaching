@@ -204,7 +204,7 @@ export function parseSheet(file: ArrayBuffer | Buffer): ParseResult {
   return { ok: true, program: { days } };
 }
 
-type ParsedPrescription = {
+export type ParsedPrescription = {
   sets: number;
   rep_min: number | null;
   rep_max: number | null;
@@ -217,7 +217,7 @@ function normalizePrescription(raw: string): string {
   return raw.replace(/×/g, 'x').replace(/[–—]/g, '-').trim();
 }
 
-function parsePrescription(raw: string): ParsedPrescription | null {
+export function parsePrescription(raw: string): ParsedPrescription | null {
   const text = normalizePrescription(raw);
   const cardio = text.match(CARDIO_RE);
   if (cardio) {
