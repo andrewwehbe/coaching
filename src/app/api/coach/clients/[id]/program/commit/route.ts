@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { readSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { parseSheet } from '@/lib/sheet-parser';
+import { sendPushToClient } from '@/lib/push';
 
 type Params = Promise<{ id: string }>;
 
@@ -115,6 +116,12 @@ export async function POST(req: Request, ctx: { params: Params }) {
       ),
     },
   });
+
+  void sendPushToClient(clientId, {
+    title: 'New program ready',
+    body: 'Your coach uploaded a fresh program — open the app to see it.',
+    url: '/today',
+  }).catch(() => {});
 
   return NextResponse.json({ ok: true, program_id: program.id });
 }

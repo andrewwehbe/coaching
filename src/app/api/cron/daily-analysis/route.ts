@@ -83,6 +83,7 @@ async function handle(req: Request): Promise<NextResponse> {
       clientId: client.id,
       name: client.name,
       weeklyDayTarget: client.weekly_day_target,
+      bodyWeightFreq: client.body_weight_freq,
       hasCheckIns:
         client.body_weight_freq !== 'none' || client.photo_check_in_enabled === true,
     });
@@ -104,6 +105,7 @@ async function runReminders(args: {
   clientId: string;
   name: string;
   weeklyDayTarget: number;
+  bodyWeightFreq: string | null;
   hasCheckIns: boolean;
 }): Promise<number> {
   const supa = db();
@@ -114,6 +116,44 @@ async function runReminders(args: {
   const sinceIso = new Date(Date.now() - 20 * 3600 * 1000).toISOString();
 
   let sent = 0;
+
+  // Daily body-weight reminder for clients with body_weight_freq = 'daily'.
+  // Cron fires at 06:00 UTC = 09:00 Asia/Beirut. Skip if they already logged
+  // weight today (by date), and suppress dup pushes via the 20h alert window.
+  if (args.bodyWeightFreq === 'daily') {
+    const today = formatISO(now, { representation: 'date' });
+    const { data: todayWeight } = await supa
+      .from('check_ins')
+      .select('id')
+      .eq('client_id', args.clientId)
+      .eq('date', today)
+      .not('body_weight', 'is', null)
+      .limit(1);
+
+    if (!todayWeight?.length) {
+      const { data: existing } = await supa
+        .from('alerts')
+        .select('id')
+        .eq('client_id', args.clientId)
+        .eq('type', 'check_in_due')
+        .gte('created_at', sinceIso)
+        .limit(1);
+
+      if (!existing?.length) {
+        await supa.from('alerts').insert({
+          client_id: args.clientId,
+          type: 'check_in_due',
+          message: `${args.name} hasn't logged body weight today.`,
+        });
+        void sendPushToClient(args.clientId, {
+          title: 'Good morning',
+          body: 'Quick body weight check-in?',
+          url: '/check-in',
+        }).catch(() => {});
+        sent++;
+      }
+    }
+  }
 
   if (dow === 6) {
     const { data: completed } = await supa

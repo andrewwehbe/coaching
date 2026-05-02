@@ -5,6 +5,7 @@ import { readSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { parsePrescription } from '@/lib/sheet-parser';
 import { nameKeyFor } from '@/lib/exercise-name';
+import { sendPushToClient } from '@/lib/push';
 
 type Params = Promise<{ id: string }>;
 
@@ -189,6 +190,12 @@ export async function POST(req: Request, ctx: { params: Params }) {
   // Days are not deleted in this editor — workouts reference them by FK,
   // so removing one would orphan history. Days only ever get added or renamed.
   // (To "delete" a day, the coach can re-upload the program from scratch.)
+
+  void sendPushToClient(clientId, {
+    title: 'Program updated',
+    body: 'Your coach made changes to your program.',
+    url: '/today',
+  }).catch(() => {});
 
   return NextResponse.json({ ok: true });
 }

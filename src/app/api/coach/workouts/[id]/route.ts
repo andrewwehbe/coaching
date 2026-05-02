@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 
 import { requireCoachApi } from '@/lib/coach-guard';
-import { db } from '@/lib/supabase';
+import { db, signMediaUrls } from '@/lib/supabase';
+
+const VIDEO_BUCKET = 'workout-videos';
 
 type Params = Promise<{ id: string }>;
 
@@ -29,15 +31,26 @@ export async function GET(_req: Request, { params }: { params: Params }) {
   const { data: sets } = logIds.length
     ? await supa
         .from('sets')
-        .select('id, exercise_log_id, set_number, weight, unit, reps, rir, cardio_minutes, notes')
+        .select('id, exercise_log_id, set_number, weight, unit, reps, rir, cardio_minutes, notes, video_url')
         .in('exercise_log_id', logIds)
         .order('set_number')
     : { data: [] as never };
 
-  const setsByLog = new Map<string, typeof sets>();
+  // Sign every video path in one batch so the coach can play them inline.
+  const videoPaths = (sets ?? []).map((s) => s.video_url).filter((p): p is string => !!p);
+  const signedByPath = new Map<string, string>();
+  if (videoPaths.length) {
+    const signed = await signMediaUrls(VIDEO_BUCKET, videoPaths);
+    videoPaths.forEach((p, i) => {
+      const url = signed[i];
+      if (url) signedByPath.set(p, url);
+    });
+  }
+
+  const setsByLog = new Map<string, Array<NonNullable<typeof sets>[number] & { video_signed_url: string | null }>>();
   for (const s of sets ?? []) {
     const arr = setsByLog.get(s.exercise_log_id) ?? [];
-    arr.push(s);
+    arr.push({ ...s, video_signed_url: s.video_url ? signedByPath.get(s.video_url) ?? null : null });
     setsByLog.set(s.exercise_log_id, arr);
   }
 

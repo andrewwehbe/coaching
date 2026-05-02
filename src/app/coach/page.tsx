@@ -53,6 +53,12 @@ export default async function CoachHome() {
         </div>
         <div className="mt-3 flex items-center justify-end gap-4">
           <Link
+            href="/coach/sessions"
+            className="text-sm text-muted hover:text-text transition-colors"
+          >
+            Sessions
+          </Link>
+          <Link
             href="/coach/alerts"
             className="text-sm text-muted hover:text-text transition-colors"
           >

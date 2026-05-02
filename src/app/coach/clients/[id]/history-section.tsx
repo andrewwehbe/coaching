@@ -120,14 +120,36 @@ function WorkoutRow({ workout }: { workout: Workout }) {
                   )}
                 </p>
                 {ex.sets.length > 0 && (
-                  <ul className="text-xs text-neutral-400 mt-1 space-y-0.5">
+                  <ul className="text-xs text-neutral-400 mt-1 space-y-1.5">
                     {ex.sets.map((s) => (
                       <li key={s.set_number}>
-                        Set {s.set_number}:{' '}
-                        {s.weight != null ? `${s.weight}${s.unit ?? ''} × ${s.reps ?? '?'}` : '—'}
-                        {s.rir != null && ` @ ${s.rir} RIR`}
-                        {s.cardio_minutes != null && ` · ${s.cardio_minutes} min`}
-                        {s.notes && ` · ${s.notes}`}
+                        <div>
+                          Set {s.set_number}:{' '}
+                          {s.weight != null ? `${s.weight}${s.unit ?? ''} × ${s.reps ?? '?'}` : '—'}
+                          {s.rir != null && ` @ ${s.rir} RIR`}
+                          {s.cardio_minutes != null && ` · ${s.cardio_minutes} min`}
+                          {s.notes && ` · ${s.notes}`}
+                          {s.video_signed_url && (
+                            <a
+                              href={s.video_signed_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="ml-2 inline-flex items-center gap-1 text-primary-hi hover:text-primary"
+                            >
+                              ▶ video
+                            </a>
+                          )}
+                        </div>
+                        {s.video_signed_url && (
+                          // eslint-disable-next-line jsx-a11y/media-has-caption
+                          <video
+                            src={s.video_signed_url}
+                            controls
+                            preload="metadata"
+                            playsInline
+                            className="mt-1 max-h-72 w-full max-w-sm rounded-lg border border-border bg-black"
+                          />
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -153,6 +175,7 @@ type DetailSet = {
   rir: number | null;
   cardio_minutes: number | null;
   notes: string | null;
+  video_signed_url: string | null;
 };
 
 type DetailExercise = {
