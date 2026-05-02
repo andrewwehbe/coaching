@@ -29,7 +29,7 @@ export default async function SessionDetailPage(props: { params: Params }) {
   const { data: logs } = await supa
     .from('exercise_logs')
     .select(
-      'id, exercise_id, status, skip_reason, pain_reason, client_note, exercises(name, position, prescription_raw, coach_note)'
+      'id, exercise_id, status, skip_reason, pain_reason, client_note, exercises(name, position, name_key, prescription_raw, coach_note)'
     )
     .eq('workout_id', id);
 
@@ -85,12 +85,19 @@ export default async function SessionDetailPage(props: { params: Params }) {
     .map((l) => {
       const raw = l.exercises as unknown;
       const ex = (Array.isArray(raw) ? raw[0] : raw) as
-        | { name?: string; position?: number; prescription_raw?: string; coach_note?: string }
+        | {
+            name?: string;
+            position?: number;
+            name_key?: string;
+            prescription_raw?: string;
+            coach_note?: string;
+          }
         | null;
       return {
         id: l.id,
         name: ex?.name ?? '(unknown)',
         position: ex?.position ?? 0,
+        name_key: ex?.name_key ?? null,
         prescription_raw: ex?.prescription_raw ?? null,
         coach_note: ex?.coach_note ?? null,
         status: l.status as string,
@@ -101,6 +108,78 @@ export default async function SessionDetailPage(props: { params: Params }) {
       };
     })
     .sort((a, b) => a.position - b.position);
+
+  // Compute PRs: for each exercise in this session, find the best (weight, reps)
+  // set across this client's logged history *before* this workout started, and
+  // count it as a PR if this workout's best beats that prior best on the same
+  // unit. First-time exercises (no prior comparable history) don't count.
+  type Effort = { weight: number; reps: number; unit: string };
+  const beats = (here: Effort, cur: Effort) =>
+    cur.unit === here.unit &&
+    (here.weight > cur.weight ||
+      (here.weight === cur.weight && here.reps > cur.reps));
+
+  const thisWorkoutBest = new Map<string, Effort>();
+  for (const ex of exercises) {
+    if (!ex.name_key) continue;
+    for (const s of ex.sets) {
+      if (s.weight == null || s.reps == null) continue;
+      const here: Effort = { weight: s.weight, reps: s.reps, unit: s.unit ?? '' };
+      const cur = thisWorkoutBest.get(ex.name_key);
+      if (!cur || beats(here, cur)) thisWorkoutBest.set(ex.name_key, here);
+    }
+  }
+
+  const nameKeysWithSets = [...thisWorkoutBest.keys()];
+  const priorBest = new Map<string, Effort>();
+  if (nameKeysWithSets.length > 0) {
+    const { data: priorWorkouts } = await supa
+      .from('workouts')
+      .select('id')
+      .eq('client_id', workout.client_id)
+      .lt('started_at', workout.started_at);
+    const priorWorkoutIds = (priorWorkouts ?? []).map((w) => w.id);
+
+    if (priorWorkoutIds.length > 0) {
+      const { data: priorLogs } = await supa
+        .from('exercise_logs')
+        .select('id, exercises!inner(name_key)')
+        .in('workout_id', priorWorkoutIds)
+        .in('exercises.name_key', nameKeysWithSets);
+
+      const logToNameKey = new Map<string, string>();
+      for (const l of priorLogs ?? []) {
+        const raw = l.exercises as unknown;
+        const ex = (Array.isArray(raw) ? raw[0] : raw) as { name_key?: string } | null;
+        if (ex?.name_key) logToNameKey.set(l.id, ex.name_key);
+      }
+
+      const priorLogIds = [...logToNameKey.keys()];
+      if (priorLogIds.length > 0) {
+        const { data: priorSets } = await supa
+          .from('sets')
+          .select('exercise_log_id, weight, unit, reps')
+          .in('exercise_log_id', priorLogIds)
+          .not('weight', 'is', null)
+          .not('reps', 'is', null);
+
+        for (const s of priorSets ?? []) {
+          const nk = logToNameKey.get(s.exercise_log_id);
+          if (!nk || s.weight == null || s.reps == null) continue;
+          const here: Effort = { weight: Number(s.weight), reps: s.reps, unit: s.unit ?? '' };
+          const cur = priorBest.get(nk);
+          if (!cur || beats(here, cur)) priorBest.set(nk, here);
+        }
+      }
+    }
+  }
+
+  const prNameKeys = new Set<string>();
+  for (const [nk, here] of thisWorkoutBest) {
+    const prior = priorBest.get(nk);
+    if (prior && beats(here, prior)) prNameKeys.add(nk);
+  }
+  const prCount = prNameKeys.size;
 
   const clientRaw = workout.clients as unknown;
   const client = (Array.isArray(clientRaw) ? clientRaw[0] : clientRaw) as { name?: string } | null;
@@ -134,6 +213,11 @@ export default async function SessionDetailPage(props: { params: Params }) {
           <span className="ml-2">
             · {totalSets} sets, {totalVideos} video{totalVideos === 1 ? '' : 's'}
           </span>
+          {prCount > 0 && (
+            <span className="ml-2 text-primary-hi">
+              · {prCount} PR{prCount === 1 ? '' : 's'}
+            </span>
+          )}
         </p>
         <div className="mt-2 flex items-center justify-between gap-3">
           <Link
@@ -156,6 +240,9 @@ export default async function SessionDetailPage(props: { params: Params }) {
                 <p className="font-medium">
                   <span className="text-faint mr-2 tabular-nums">{ex.position}.</span>
                   {ex.name}
+                  {ex.name_key && prNameKeys.has(ex.name_key) && (
+                    <span className="ml-2 text-xs text-primary-hi font-semibold">PR</span>
+                  )}
                   {ex.status !== 'completed' && (
                     <span
                       className={`ml-2 text-xs ${
