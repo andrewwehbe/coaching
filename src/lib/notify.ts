@@ -12,15 +12,17 @@ export type AlertType =
   | 'check_in_due'
   | 'check_in_submitted';
 
-// Which alert types are urgent enough to wake the coach's phone.
-// Workout start/complete are now pushable so the coach knows in real time
-// when a client begins or finishes a session. Check-ins stay quiet.
+// Every coach-facing alert is pushable now — coach asked to be notified
+// in real time on workout start/finish, check-ins, missed days, pain,
+// stalled. The only non-pushable is check_in_due (that one goes to the
+// client themselves via the cron, not the coach).
 const PUSHABLE: ReadonlySet<AlertType> = new Set([
   'pain',
   'stalled',
   'missed_workout',
   'workout_started',
   'workout_completed',
+  'check_in_submitted',
 ]);
 
 export async function insertAlert(args: {
@@ -44,6 +46,7 @@ export async function insertAlert(args: {
       : args.type === 'workout_completed' ? '✅ Finished'
       : args.type === 'missed_workout' ? 'Behind on workouts'
       : args.type === 'stalled' ? 'Stalled exercise'
+      : args.type === 'check_in_submitted' ? '📋 Check-in'
       : 'Coaching';
     void sendPushToCoach({
       title,

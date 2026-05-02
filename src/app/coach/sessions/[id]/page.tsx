@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 
 import { requireCoach } from '@/lib/coach-guard';
 import { db, signMediaUrls } from '@/lib/supabase';
+import { ResetWorkoutButton } from './reset-workout-button';
 
 const VIDEO_BUCKET = 'workout-videos';
 
@@ -134,14 +135,15 @@ export default async function SessionDetailPage(props: { params: Params }) {
             · {totalSets} sets, {totalVideos} video{totalVideos === 1 ? '' : 's'}
           </span>
         </p>
-        <p className="mt-2">
+        <div className="mt-2 flex items-center justify-between gap-3">
           <Link
             href={`/coach/clients/${workout.client_id}`}
             className="text-xs text-primary-hi hover:text-primary"
           >
             Open client →
           </Link>
-        </p>
+          <ResetWorkoutButton workoutId={workout.id} />
+        </div>
       </header>
 
       {exercises.length === 0 ? (
