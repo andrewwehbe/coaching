@@ -3,6 +3,7 @@ import 'server-only';
 import { startOfWeek, formatISO } from 'date-fns';
 
 import { db } from './supabase';
+import { buildSuggestionsByClient, type Suggestion } from './suggestions';
 
 export type ClientWeekRow = {
   clientId: string;
@@ -16,6 +17,7 @@ export type ClientWeekRow = {
   prs: number;
   bodyWeight: { value: number; unit: string; deltaFromPrior: number | null } | null;
   checkedIn: boolean;
+  suggestions: Suggestion[];
 };
 
 export type WeeklyReport = {
@@ -72,6 +74,7 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
     { data: stalledRows },
     { data: thisWeekCheckIns },
     { data: priorCheckIns },
+    suggestionsByClient,
   ] = await Promise.all([
     supa
       .from('workouts')
@@ -103,6 +106,7 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
       .lt('date', weekStartIso)
       .not('body_weight', 'is', null)
       .order('date', { ascending: false }),
+    buildSuggestionsByClient(ids, at),
   ]);
 
   const completedWorkoutIds = (weekWorkouts ?? [])
@@ -238,6 +242,7 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
       prs,
       bodyWeight,
       checkedIn: thisCi != null,
+      suggestions: suggestionsByClient.get(c.id) ?? [],
     };
   });
 

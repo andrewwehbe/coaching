@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 
 import { requireCoach } from '@/lib/coach-guard';
 import { buildWeeklyReport } from '@/lib/weekly-report';
+import { SuggestionRow } from './suggestion-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,6 +116,14 @@ export default async function WeeklyReportPage() {
                   <span className="text-faint italic">no check-in</span>
                 )}
               </div>
+
+              {r.suggestions.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {r.suggestions.map((s) => (
+                    <SuggestionRow key={s.id} clientId={r.clientId} suggestion={s} />
+                  ))}
+                </div>
+              )}
             </li>
           );
         })}
