@@ -10,7 +10,8 @@ export type AlertType =
   | 'workout_started'
   | 'workout_completed'
   | 'check_in_due'
-  | 'check_in_submitted';
+  | 'check_in_submitted'
+  | 'missed_checkin';
 
 // Every coach-facing alert is pushable now — coach asked to be notified
 // in real time on workout start/finish, check-ins, missed days, pain,
@@ -23,6 +24,7 @@ const PUSHABLE: ReadonlySet<AlertType> = new Set([
   'workout_started',
   'workout_completed',
   'check_in_submitted',
+  'missed_checkin',
 ]);
 
 export async function insertAlert(args: {
@@ -47,6 +49,7 @@ export async function insertAlert(args: {
       : args.type === 'missed_workout' ? 'Behind on workouts'
       : args.type === 'stalled' ? 'Stalled exercise'
       : args.type === 'check_in_submitted' ? '📋 Check-in'
+      : args.type === 'missed_checkin' ? '⏭ Missed check-in'
       : 'Coaching';
     void sendPushToCoach({
       title,

@@ -115,7 +115,8 @@ type AlertRow = {
     | 'workout_started'
     | 'workout_completed'
     | 'check_in_due'
-    | 'check_in_submitted';
+    | 'check_in_submitted'
+    | 'missed_checkin';
   message: string;
   created_at: string;
   acknowledged_at: string | null;

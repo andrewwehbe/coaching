@@ -14,7 +14,8 @@ type Alert = {
     | 'workout_started'
     | 'workout_completed'
     | 'check_in_due'
-    | 'check_in_submitted';
+    | 'check_in_submitted'
+    | 'missed_checkin';
   message: string;
   created_at: string;
   clients?: { name: string } | null;
@@ -42,6 +43,10 @@ const TYPE_CHIPS: Record<Alert['type'], { label: string; className: string }> = 
   check_in_submitted: {
     label: 'Check-in',
     className: 'bg-primary/15 text-primary-hi border-primary/30',
+  },
+  missed_checkin: {
+    label: 'Missed check-in',
+    className: 'bg-warn/10 text-warn border-warn/35',
   },
 };
 

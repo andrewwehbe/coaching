@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/weekly-report",
       "schedule": "0 5 * * 0"
+    },
+    {
+      "path": "/api/cron/checkin-followup",
+      "schedule": "0 4,14 * * 1"
     }
   ]
 }
