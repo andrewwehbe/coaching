@@ -14,21 +14,18 @@ export default async function EditProgramPage(props: { params: Params }) {
   const { id: clientId } = await props.params;
 
   const supa = db();
-  const { data: client } = await supa
-    .from('clients')
-    .select('id, name')
-    .eq('id', clientId)
-    .maybeSingle();
+  const [{ data: client }, { data: program }] = await Promise.all([
+    supa.from('clients').select('id, name').eq('id', clientId).maybeSingle(),
+    supa
+      .from('programs')
+      .select('id, source_filename')
+      .eq('client_id', clientId)
+      .eq('active', true)
+      .order('uploaded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
   if (!client) notFound();
-
-  const { data: program } = await supa
-    .from('programs')
-    .select('id, source_filename')
-    .eq('client_id', clientId)
-    .eq('active', true)
-    .order('uploaded_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
 
   if (!program) {
     return (

@@ -33,55 +33,38 @@ export default async function SessionsPage({
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekStartIso = formatISO(weekStart, { representation: 'date' });
 
+  // One nested query gets workouts + logs + sets in a single round-trip
+  // (was 3 sequential queries).
   const { data: workouts } = await supa
     .from('workouts')
-    .select('id, client_id, day_id, started_at, completed_at, days(label), clients(name)')
+    .select(
+      'id, client_id, day_id, started_at, completed_at, days(label), clients(name), exercise_logs(id, pain_reason, sets(video_url))'
+    )
     .gte('week_start', weekStartIso)
     .not('completed_at', 'is', null)
     .order('completed_at', { ascending: false })
     .limit(200);
-
-  const workoutIds = (workouts ?? []).map((w) => w.id);
-
-  // Pull set + log info for the listed workouts in two batches.
-  const { data: logs } = workoutIds.length
-    ? await supa
-        .from('exercise_logs')
-        .select('id, workout_id, pain_reason')
-        .in('workout_id', workoutIds)
-    : { data: [] as never };
-  const logIds = (logs ?? []).map((l) => l.id);
-  const logToWorkout = new Map<string, string>();
-  for (const l of logs ?? []) logToWorkout.set(l.id, l.workout_id);
-
-  const painByWorkout = new Map<string, number>();
-  for (const l of logs ?? []) {
-    if (l.pain_reason) painByWorkout.set(l.workout_id, (painByWorkout.get(l.workout_id) ?? 0) + 1);
-  }
-
-  const { data: sets } = logIds.length
-    ? await supa
-        .from('sets')
-        .select('exercise_log_id, video_url')
-        .in('exercise_log_id', logIds)
-    : { data: [] as never };
-
-  const setCount = new Map<string, number>();
-  const videoCountByWorkout = new Map<string, number>();
-  for (const s of sets ?? []) {
-    const wid = logToWorkout.get(s.exercise_log_id);
-    if (!wid) continue;
-    setCount.set(wid, (setCount.get(wid) ?? 0) + 1);
-    if (s.video_url) {
-      videoCountByWorkout.set(wid, (videoCountByWorkout.get(wid) ?? 0) + 1);
-    }
-  }
 
   const rows: WorkoutRow[] = (workouts ?? []).map((w) => {
     const days = w.days as unknown;
     const day = (Array.isArray(days) ? days[0] : days) as { label?: string } | null;
     const cs = w.clients as unknown;
     const c = (Array.isArray(cs) ? cs[0] : cs) as { name?: string } | null;
+    const logs = (w.exercise_logs as Array<{
+      id: string;
+      pain_reason: string | null;
+      sets: Array<{ video_url: string | null }> | null;
+    }>) ?? [];
+    let setCount = 0;
+    let videoCount = 0;
+    let painCount = 0;
+    for (const l of logs) {
+      if (l.pain_reason) painCount++;
+      for (const s of l.sets ?? []) {
+        setCount++;
+        if (s.video_url) videoCount++;
+      }
+    }
     return {
       id: w.id,
       client_id: w.client_id,
@@ -89,9 +72,9 @@ export default async function SessionsPage({
       day_label: day?.label ?? null,
       started_at: w.started_at,
       completed_at: w.completed_at,
-      set_count: setCount.get(w.id) ?? 0,
-      video_count: videoCountByWorkout.get(w.id) ?? 0,
-      pain_count: painByWorkout.get(w.id) ?? 0,
+      set_count: setCount,
+      video_count: videoCount,
+      pain_count: painCount,
     };
   });
 

@@ -17,19 +17,22 @@ export default async function CheckInsPage({
   const { client: clientFilter } = await searchParams;
 
   const supa = db();
-  const { data: clients } = await supa
-    .from('clients')
-    .select('id, name, body_weight_freq, photo_check_in_enabled')
-    .eq('active', true)
-    .order('name');
 
-  let q = supa
+  let checkInQuery = supa
     .from('check_ins')
     .select('id, client_id, date, body_weight, body_weight_unit, notes, clients(name), check_in_photos(id, label, storage_url)')
     .order('date', { ascending: false })
     .limit(120);
-  if (clientFilter) q = q.eq('client_id', clientFilter);
-  const { data: rows } = await q;
+  if (clientFilter) checkInQuery = checkInQuery.eq('client_id', clientFilter);
+
+  const [{ data: clients }, { data: rows }] = await Promise.all([
+    supa
+      .from('clients')
+      .select('id, name, body_weight_freq, photo_check_in_enabled')
+      .eq('active', true)
+      .order('name'),
+    checkInQuery,
+  ]);
 
   const photoPaths: string[] = [];
   for (const r of rows ?? []) {

@@ -19,19 +19,18 @@ export default async function AllHistoryPage({
 
   const supa = db();
 
-  const { data: clients } = await supa
-    .from('clients')
-    .select('id, name')
-    .order('name');
-
-  let q = supa
+  let workoutQuery = supa
     .from('workouts')
     .select('id, client_id, started_at, completed_at, days(label), clients(name)')
     .not('completed_at', 'is', null)
     .order('completed_at', { ascending: false })
     .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
-  if (clientFilter) q = q.eq('client_id', clientFilter);
-  const { data: workouts } = await q;
+  if (clientFilter) workoutQuery = workoutQuery.eq('client_id', clientFilter);
+
+  const [{ data: clients }, { data: workouts }] = await Promise.all([
+    supa.from('clients').select('id, name').order('name'),
+    workoutQuery,
+  ]);
 
   const rows = (workouts ?? []).slice(0, PAGE_SIZE).map((w) => {
     const days = w.days as unknown;

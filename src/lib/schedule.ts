@@ -32,14 +32,36 @@ export async function buildTodaySchedule(clientId: string): Promise<TodaySchedul
   const now = new Date();
   const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday
 
-  const { data: program } = await supa
-    .from('programs')
-    .select('id')
-    .eq('client_id', clientId)
-    .eq('active', true)
-    .order('uploaded_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // thisWeek + recent only depend on clientId + dates, so we can run them
+  // in parallel with the program lookup. days needs program.id, so it stays
+  // sequential after program.
+  const since = new Date(now);
+  since.setDate(since.getDate() - 2);
+
+  const [
+    { data: program },
+    { data: thisWeek },
+    { data: recent },
+  ] = await Promise.all([
+    supa
+      .from('programs')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('active', true)
+      .order('uploaded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supa
+      .from('workouts')
+      .select('id, day_id, completed_at, started_at, is_missed')
+      .eq('client_id', clientId)
+      .gte('week_start', formatISO(weekStart, { representation: 'date' })),
+    supa
+      .from('workouts')
+      .select('started_at, completed_at')
+      .eq('client_id', clientId)
+      .gte('started_at', since.toISOString()),
+  ]);
 
   if (!program) {
     return {
@@ -56,22 +78,6 @@ export async function buildTodaySchedule(clientId: string): Promise<TodaySchedul
     .select('id, day_index, label')
     .eq('program_id', program.id)
     .order('day_index');
-
-  // Workouts started this week.
-  const { data: thisWeek } = await supa
-    .from('workouts')
-    .select('id, day_id, completed_at, started_at, is_missed')
-    .eq('client_id', clientId)
-    .gte('week_start', formatISO(weekStart, { representation: 'date' }));
-
-  // Workouts started on each of the last 2 calendar days (for the 3-in-a-row check).
-  const since = new Date(now);
-  since.setDate(since.getDate() - 2);
-  const { data: recent } = await supa
-    .from('workouts')
-    .select('started_at, completed_at')
-    .eq('client_id', clientId)
-    .gte('started_at', since.toISOString());
 
   const trainedDays = new Set<number>();
   for (const w of recent ?? []) {

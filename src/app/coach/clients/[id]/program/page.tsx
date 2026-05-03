@@ -16,21 +16,18 @@ export default async function ProgramUploadPage(props: { params: Params }) {
   const { id } = await props.params;
   const supa = db();
 
-  const { data: client } = await supa
-    .from('clients')
-    .select('id,name')
-    .eq('id', id)
-    .maybeSingle();
+  const [{ data: client }, { data: activeProgram }] = await Promise.all([
+    supa.from('clients').select('id,name').eq('id', id).maybeSingle(),
+    supa
+      .from('programs')
+      .select('id,source_filename,uploaded_at')
+      .eq('client_id', id)
+      .eq('active', true)
+      .order('uploaded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
   if (!client) notFound();
-
-  const { data: activeProgram } = await supa
-    .from('programs')
-    .select('id,source_filename,uploaded_at')
-    .eq('client_id', id)
-    .eq('active', true)
-    .order('uploaded_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
 
   return (
     <main className="flex flex-1 flex-col px-5 py-7 max-w-2xl w-full mx-auto">

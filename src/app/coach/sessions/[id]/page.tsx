@@ -45,7 +45,21 @@ export default async function SessionDetailPage(props: { params: Params }) {
     : { data: [] as never };
 
   const videoPaths = (sets ?? []).map((s) => s.video_url).filter((p): p is string => !!p);
-  const signed = videoPaths.length ? await signMediaUrls(VIDEO_BUCKET, videoPaths) : [];
+  const setIds = (sets ?? []).map((s) => s.id);
+
+  // Sign media URLs and look up PR rows in parallel — both independently
+  // depend on sets (one on video paths, one on set ids).
+  const [signed, prRows] = await Promise.all([
+    videoPaths.length ? signMediaUrls(VIDEO_BUCKET, videoPaths) : Promise.resolve([] as (string | null)[]),
+    setIds.length
+      ? supa
+          .from('best_efforts')
+          .select('exercise_name_key')
+          .eq('client_id', workout.client_id)
+          .in('source_set_id', setIds)
+          .then((r) => r.data ?? [])
+      : Promise.resolve([] as { exercise_name_key: string }[]),
+  ]);
   const signedByPath = new Map<string, string>();
   videoPaths.forEach((p, i) => {
     if (signed[i]) signedByPath.set(p, signed[i]!);
@@ -109,76 +123,11 @@ export default async function SessionDetailPage(props: { params: Params }) {
     })
     .sort((a, b) => a.position - b.position);
 
-  // Compute PRs: for each exercise in this session, find the best (weight, reps)
-  // set across this client's logged history *before* this workout started, and
-  // count it as a PR if this workout's best beats that prior best on the same
-  // unit. First-time exercises (no prior comparable history) don't count.
-  type Effort = { weight: number; reps: number; unit: string };
-  const beats = (here: Effort, cur: Effort) =>
-    cur.unit === here.unit &&
-    (here.weight > cur.weight ||
-      (here.weight === cur.weight && here.reps > cur.reps));
-
-  const thisWorkoutBest = new Map<string, Effort>();
-  for (const ex of exercises) {
-    if (!ex.name_key) continue;
-    for (const s of ex.sets) {
-      if (s.weight == null || s.reps == null) continue;
-      const here: Effort = { weight: s.weight, reps: s.reps, unit: s.unit ?? '' };
-      const cur = thisWorkoutBest.get(ex.name_key);
-      if (!cur || beats(here, cur)) thisWorkoutBest.set(ex.name_key, here);
-    }
-  }
-
-  const nameKeysWithSets = [...thisWorkoutBest.keys()];
-  const priorBest = new Map<string, Effort>();
-  if (nameKeysWithSets.length > 0) {
-    const { data: priorWorkouts } = await supa
-      .from('workouts')
-      .select('id')
-      .eq('client_id', workout.client_id)
-      .lt('started_at', workout.started_at);
-    const priorWorkoutIds = (priorWorkouts ?? []).map((w) => w.id);
-
-    if (priorWorkoutIds.length > 0) {
-      const { data: priorLogs } = await supa
-        .from('exercise_logs')
-        .select('id, exercises!inner(name_key)')
-        .in('workout_id', priorWorkoutIds)
-        .in('exercises.name_key', nameKeysWithSets);
-
-      const logToNameKey = new Map<string, string>();
-      for (const l of priorLogs ?? []) {
-        const raw = l.exercises as unknown;
-        const ex = (Array.isArray(raw) ? raw[0] : raw) as { name_key?: string } | null;
-        if (ex?.name_key) logToNameKey.set(l.id, ex.name_key);
-      }
-
-      const priorLogIds = [...logToNameKey.keys()];
-      if (priorLogIds.length > 0) {
-        const { data: priorSets } = await supa
-          .from('sets')
-          .select('exercise_log_id, weight, unit, reps')
-          .in('exercise_log_id', priorLogIds)
-          .not('weight', 'is', null)
-          .not('reps', 'is', null);
-
-        for (const s of priorSets ?? []) {
-          const nk = logToNameKey.get(s.exercise_log_id);
-          if (!nk || s.weight == null || s.reps == null) continue;
-          const here: Effort = { weight: Number(s.weight), reps: s.reps, unit: s.unit ?? '' };
-          const cur = priorBest.get(nk);
-          if (!cur || beats(here, cur)) priorBest.set(nk, here);
-        }
-      }
-    }
-  }
-
-  const prNameKeys = new Set<string>();
-  for (const [nk, here] of thisWorkoutBest) {
-    const prior = priorBest.get(nk);
-    if (prior && beats(here, prior)) prNameKeys.add(nk);
-  }
+  // PR = a best_efforts row whose source_set_id points at one of THIS
+  // workout's sets. That's only set when a logged set actually beat the
+  // prior best — same signal the rest of the app uses. No prior-history
+  // walk needed.
+  const prNameKeys = new Set<string>(prRows.map((r) => r.exercise_name_key));
   const prCount = prNameKeys.size;
 
   const clientRaw = workout.clients as unknown;

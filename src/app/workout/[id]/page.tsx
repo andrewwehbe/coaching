@@ -35,27 +35,25 @@ export default async function WorkoutPage(props: { params: Params }) {
 
   if (!workout || workout.client_id !== user.id) notFound();
 
-  const { data: day } = await supa
-    .from('days')
-    .select('id, label')
-    .eq('id', workout.day_id)
-    .single();
+  // day, exercises, logs are all keyed off workout.day_id / workout.id and
+  // independent of each other — parallel fetch.
+  const [{ data: day }, { data: exercises }, { data: logs }] = await Promise.all([
+    supa.from('days').select('id, label').eq('id', workout.day_id).single(),
+    supa
+      .from('exercises')
+      .select(
+        'id, position, name, name_key, prescription_raw, prescribed_sets, rep_min, rep_max, coach_note, is_cardio, cardio_type'
+      )
+      .eq('day_id', workout.day_id)
+      .is('archived_at', null)
+      .order('position'),
+    supa
+      .from('exercise_logs')
+      .select('id, exercise_id, status, sets(set_number, weight, unit, reps, rir, cardio_minutes, video_url, notes)')
+      .eq('workout_id', workout.id),
+  ]);
 
-  const { data: exercises } = await supa
-    .from('exercises')
-    .select(
-      'id, position, name, name_key, prescription_raw, prescribed_sets, rep_min, rep_max, coach_note, is_cardio, cardio_type'
-    )
-    .eq('day_id', workout.day_id)
-    .is('archived_at', null)
-    .order('position');
-
-  const { data: logs } = await supa
-    .from('exercise_logs')
-    .select('id, exercise_id, status, sets(set_number, weight, unit, reps, rir, cardio_minutes, video_url, notes)')
-    .eq('workout_id', workout.id);
-
-  // Best efforts for each exercise's name_key.
+  // Best efforts depend on exercises' name_keys, so this one must follow.
   const nameKeys = Array.from(new Set((exercises ?? []).map((e) => e.name_key)));
   const bests = nameKeys.length
     ? (

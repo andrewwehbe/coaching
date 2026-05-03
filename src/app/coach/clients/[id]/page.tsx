@@ -19,36 +19,33 @@ export default async function ClientDetailPage(props: { params: Params }) {
   const { id } = await props.params;
 
   const supa = db();
-  const { data: client } = await supa
-    .from('clients')
-    .select(
-      'id, name, active, weekly_day_target, body_weight_freq, photo_check_in_enabled, meal_plan_enabled, created_at, deactivated_at',
-    )
-    .eq('id', id)
-    .maybeSingle();
-  if (!client) notFound();
-
-  const { data: program } = await supa
-    .from('programs')
-    .select('id, source_filename, uploaded_at')
-    .eq('client_id', id)
-    .eq('active', true)
-    .order('uploaded_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const { data: days } = program
-    ? await supa
-        .from('days')
-        .select('id, day_index, label, exercises(id, position, name, prescription_raw, coach_note, archived_at)')
-        .eq('program_id', program.id)
-        .order('day_index')
-    : { data: [] as never };
-
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekStartIso = formatISO(weekStart, { representation: 'date' });
 
-  const [{ data: workouts }, { data: thisWeek }, { data: checkIns }] = await Promise.all([
+  // Client + program + workouts + thisWeek + checkIns are all keyed off
+  // clientId only and can run in a single round-trip.
+  const [
+    { data: client },
+    { data: program },
+    { data: workouts },
+    { data: thisWeek },
+    { data: checkIns },
+  ] = await Promise.all([
+    supa
+      .from('clients')
+      .select(
+        'id, name, active, weekly_day_target, body_weight_freq, photo_check_in_enabled, meal_plan_enabled, created_at, deactivated_at',
+      )
+      .eq('id', id)
+      .maybeSingle(),
+    supa
+      .from('programs')
+      .select('id, source_filename, uploaded_at')
+      .eq('client_id', id)
+      .eq('active', true)
+      .order('uploaded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
     supa
       .from('workouts')
       .select('id, day_id, started_at, completed_at, week_start, is_deload, days(label)')
@@ -67,6 +64,15 @@ export default async function ClientDetailPage(props: { params: Params }) {
       .order('date', { ascending: false })
       .limit(8),
   ]);
+  if (!client) notFound();
+
+  const { data: days } = program
+    ? await supa
+        .from('days')
+        .select('id, day_index, label, exercises(id, position, name, prescription_raw, coach_note, archived_at)')
+        .eq('program_id', program.id)
+        .order('day_index')
+    : { data: [] as never };
 
   const currentWeekIsDeload = (thisWeek ?? []).some((w) => w.is_deload);
 
