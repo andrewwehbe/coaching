@@ -87,17 +87,17 @@ export function ClientActions({
   }
 
   return (
-    <section className="rounded-xl border border-neutral-800 bg-neutral-900/30 p-4 mb-6">
-      <h2 className="text-sm uppercase tracking-wide text-neutral-500 mb-3">Actions</h2>
+    <section className="rounded-2xl border border-border bg-surface/60 p-4 mb-6">
+      <h2 className="text-xs uppercase tracking-[0.18em] text-faint mb-3">Actions</h2>
 
       {newPin && (
-        <div className="mb-3 rounded-lg border border-emerald-700/50 bg-emerald-950/30 p-3 text-center">
-          <p className="text-xs text-emerald-200/80">New PIN — share once:</p>
-          <p className="text-3xl font-bold tracking-[0.3em] tabular-nums my-2">{newPin}</p>
+        <div className="mb-3 rounded-xl border border-primary/40 bg-primary/8 p-3 text-center">
+          <p className="text-xs text-primary-hi">New PIN — share once:</p>
+          <p className="text-3xl font-bold tracking-[0.3em] tabular-nums my-2 text-text">{newPin}</p>
           <button
             type="button"
             onClick={() => setNewPin(null)}
-            className="text-xs text-neutral-300 hover:text-neutral-100 underline"
+            className="text-xs text-muted hover:text-text underline transition-colors"
           >
             Dismiss
           </button>
@@ -109,7 +109,7 @@ export function ClientActions({
           type="button"
           onClick={regenerate}
           disabled={busy !== null || pending}
-          className="rounded-lg border border-neutral-700 hover:bg-neutral-800/40 px-3 py-2 text-sm disabled:opacity-50"
+          className="rounded-lg border border-border bg-surface/40 hover:bg-surface hover:border-border-strong text-text px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50"
         >
           {busy === 'pin' ? 'Generating…' : 'Regenerate PIN'}
         </button>
@@ -117,10 +117,10 @@ export function ClientActions({
           type="button"
           onClick={toggleDeload}
           disabled={busy !== null || pending}
-          className={`rounded-lg border px-3 py-2 text-sm disabled:opacity-50 ${
+          className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
             currentWeekIsDeload
-              ? 'border-amber-700/50 bg-amber-950/30 hover:bg-amber-950/50'
-              : 'border-neutral-700 hover:bg-neutral-800/40'
+              ? 'border-warn/40 bg-warn/10 text-warn hover:bg-warn/15'
+              : 'border-border bg-surface/40 text-text hover:bg-surface hover:border-border-strong'
           }`}
         >
           {busy === 'deload'
@@ -133,17 +133,17 @@ export function ClientActions({
           type="button"
           onClick={() => setActive(!active)}
           disabled={busy !== null || pending}
-          className={`rounded-lg border px-3 py-2 text-sm disabled:opacity-50 ${
+          className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
             active
-              ? 'border-red-700/50 hover:bg-red-950/30 text-red-300'
-              : 'border-emerald-700/50 hover:bg-emerald-950/30 text-emerald-300'
+              ? 'border-danger/40 bg-surface/40 text-danger hover:bg-danger/10'
+              : 'border-primary/40 bg-surface/40 text-primary-hi hover:bg-primary/10'
           }`}
         >
           {busy === 'active' ? '…' : active ? 'Deactivate' : 'Reactivate'}
         </button>
       </div>
 
-      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </section>
   );
 }

@@ -29,19 +29,19 @@ export default async function TodayPage() {
   }
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-6 max-w-md w-full mx-auto">
-      <header className="mb-7">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-muted">Hey,</p>
-            <h1 className="text-2xl font-semibold tracking-tight truncate">{user.greetingName}</h1>
-          </div>
-          <NotificationsToggle />
+    <main className="flex flex-1 flex-col px-5 py-7 max-w-md w-full mx-auto">
+      <header className="mb-7 flex items-end justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs uppercase tracking-[0.18em] text-faint">Hey,</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight truncate">
+            {user.greetingName}
+          </h1>
         </div>
-        <div className="mt-3 flex items-center justify-end gap-4">
+        <div className="flex items-center gap-3 shrink-0">
+          <NotificationsToggle />
           <Link
             href="/check-in"
-            className="text-sm text-muted hover:text-text transition-colors"
+            className="text-sm font-medium text-muted hover:text-text transition-colors"
           >
             Check-in
           </Link>

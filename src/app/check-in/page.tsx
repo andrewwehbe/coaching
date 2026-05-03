@@ -1,9 +1,12 @@
 import { redirect } from 'next/navigation';
 import { format } from 'date-fns';
 
+import Link from 'next/link';
+
 import { readSession } from '@/lib/auth';
 import { db, signMediaUrls } from '@/lib/supabase';
 import { LogoutButton } from '@/components/logout-button';
+import { NotificationsToggle } from '@/components/notifications-toggle';
 import { CheckInForm } from './check-in-form';
 
 const PHOTO_BUCKET = 'check-in-photos';
@@ -38,13 +41,22 @@ export default async function CheckInPage() {
   photoPaths.forEach((p, i) => signedByPath.set(p, signed[i]));
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-6 max-w-md w-full mx-auto">
-      <header className="flex items-center justify-between mb-7">
-        <div>
-          <p className="text-sm text-muted">Check-in</p>
-          <h1 className="text-2xl font-semibold tracking-tight">{user.name}</h1>
+    <main className="flex flex-1 flex-col px-5 py-7 max-w-md w-full mx-auto">
+      <Link
+        href="/today"
+        className="text-sm text-muted hover:text-text transition-colors"
+      >
+        ← Today
+      </Link>
+      <header className="mt-3 mb-7 flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-[0.18em] text-faint">Check-in</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight truncate">{user.name}</h1>
         </div>
-        <LogoutButton />
+        <div className="flex items-center gap-3 shrink-0">
+          <NotificationsToggle />
+          <LogoutButton />
+        </div>
       </header>
 
       <CheckInForm defaultUnit={lastUnit} />

@@ -71,29 +71,29 @@ function ProposalCard({ proposal }: { proposal: Proposal }) {
   }
 
   return (
-    <li className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+    <li className="rounded-2xl border border-border bg-surface/60 p-4">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-neutral-500">
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-[0.18em] text-faint">
             {proposal.client_name} · {proposal.day_label}
           </p>
-          <p className="font-medium mt-1">{proposal.exercise_name}</p>
+          <p className="font-medium mt-1 text-text">{proposal.exercise_name}</p>
           {proposal.reason && (
-            <p className="text-xs text-neutral-400 mt-1">{proposal.reason}</p>
+            <p className="text-xs text-muted mt-1">{proposal.reason}</p>
           )}
         </div>
-        <p className="text-[10px] text-neutral-500 whitespace-nowrap">
+        <p className="text-[10px] text-faint whitespace-nowrap shrink-0">
           {new Date(proposal.proposed_at).toLocaleDateString()}
         </p>
       </div>
 
       {picking && (
         <div className="mt-4 space-y-2">
-          <label className="block text-xs text-neutral-400">
+          <label className="block text-xs text-muted">
             Replace with (from this day)
           </label>
           {proposal.alternatives.length === 0 ? (
-            <p className="text-xs text-amber-300">
+            <p className="text-xs text-warn">
               No other exercises in this day. Add one from the client&apos;s
               program editor first.
             </p>
@@ -101,7 +101,7 @@ function ProposalCard({ proposal }: { proposal: Proposal }) {
             <select
               value={replacement}
               onChange={(e) => setReplacement(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-neutral-950 border border-neutral-800 text-sm focus:outline-none focus:border-neutral-500"
+              className="w-full px-3 py-2 rounded-lg bg-bg/70 border border-border text-text text-sm focus:outline-none focus:border-border-strong"
             >
               <option value="">Select replacement…</option>
               {proposal.alternatives.map((a) => (
@@ -114,7 +114,7 @@ function ProposalCard({ proposal }: { proposal: Proposal }) {
         </div>
       )}
 
-      {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+      {error && <p className="text-xs text-danger mt-2">{error}</p>}
 
       <div className="flex gap-2 mt-4">
         {!picking ? (
@@ -123,7 +123,7 @@ function ProposalCard({ proposal }: { proposal: Proposal }) {
               type="button"
               disabled={busy}
               onClick={() => setPicking(true)}
-              className="flex-1 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-sm font-medium"
+              className="flex-1 px-3 py-2 rounded-lg bg-primary hover:bg-primary-hi text-bg disabled:opacity-50 text-sm font-semibold transition-colors"
             >
               Approve
             </button>
@@ -131,7 +131,7 @@ function ProposalCard({ proposal }: { proposal: Proposal }) {
               type="button"
               disabled={busy}
               onClick={reject}
-              className="px-3 py-2 rounded-lg border border-neutral-700 hover:border-neutral-500 disabled:opacity-50 text-sm"
+              className="px-3 py-2 rounded-lg border border-border bg-surface/40 text-text hover:bg-surface hover:border-border-strong disabled:opacity-50 text-sm font-medium transition-colors"
             >
               Reject
             </button>
@@ -142,7 +142,7 @@ function ProposalCard({ proposal }: { proposal: Proposal }) {
               type="button"
               disabled={busy || !replacement}
               onClick={approve}
-              className="flex-1 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-sm font-medium"
+              className="flex-1 px-3 py-2 rounded-lg bg-primary hover:bg-primary-hi text-bg disabled:opacity-50 text-sm font-semibold transition-colors"
             >
               {busy ? 'Saving…' : 'Confirm swap'}
             </button>
@@ -154,7 +154,7 @@ function ProposalCard({ proposal }: { proposal: Proposal }) {
                 setReplacement('');
                 setError(null);
               }}
-              className="px-3 py-2 rounded-lg border border-neutral-700 hover:border-neutral-500 disabled:opacity-50 text-sm"
+              className="px-3 py-2 rounded-lg border border-border bg-surface/40 text-text hover:bg-surface hover:border-border-strong disabled:opacity-50 text-sm font-medium transition-colors"
             >
               Cancel
             </button>

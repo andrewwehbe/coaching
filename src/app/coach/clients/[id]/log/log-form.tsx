@@ -159,11 +159,11 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
   return (
     <form onSubmit={submit} className="space-y-5">
       <label className="block">
-        <span className="text-xs uppercase tracking-wide text-neutral-500 mb-1.5 block">Day</span>
+        <span className="text-xs uppercase tracking-wide text-faint mb-1.5 block">Day</span>
         <select
           value={dayId}
           onChange={(e) => switchDay(e.target.value)}
-          className="w-full h-12 rounded-xl bg-neutral-900 border border-neutral-800 px-3 focus:outline-none focus:border-neutral-500"
+          className="w-full h-12 rounded-xl bg-surface border border-border px-3 focus:outline-none focus:border-border-strong"
         >
           {days.map((d) => (
             <option key={d.id} value={d.id}>
@@ -178,11 +178,11 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
         return (
           <div
             key={ex.id}
-            className="rounded-xl border border-neutral-800 bg-neutral-900/30 p-4 space-y-3"
+            className="rounded-xl border border-border bg-surface/40 p-4 space-y-3"
           >
             <div className="flex items-baseline justify-between gap-3">
               <p className="font-medium">{ex.name}</p>
-              <p className="text-xs text-neutral-500">{ex.prescription_raw ?? ''}</p>
+              <p className="text-xs text-faint">{ex.prescription_raw ?? ''}</p>
             </div>
 
             <div className="flex gap-1.5 text-xs">
@@ -198,7 +198,7 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
                         : s === 'skipped'
                           ? 'border-amber-700/50 bg-amber-950/40 text-amber-200'
                           : 'border-emerald-700/50 bg-emerald-950/40 text-emerald-200'
-                      : 'border-neutral-700 text-neutral-400'
+                      : 'border-border-strong text-muted'
                   }`}
                 >
                   {s}
@@ -212,7 +212,7 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
                 onChange={(e) => updateEntry(ex.id, { pain_reason: e.target.value })}
                 placeholder="Pain notes…"
                 rows={2}
-                className="w-full text-sm rounded-lg bg-neutral-950/70 border border-red-700/40 px-3 py-2 focus:outline-none focus:border-red-500 resize-none"
+                className="w-full text-sm rounded-lg bg-bg/70 border border-red-700/40 px-3 py-2 focus:outline-none focus:border-red-500 resize-none"
               />
             )}
 
@@ -221,7 +221,7 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
                 value={entry.skip_reason}
                 onChange={(e) => updateEntry(ex.id, { skip_reason: e.target.value })}
                 placeholder="Skip reason…"
-                className="w-full text-sm h-10 rounded-lg bg-neutral-950/70 border border-neutral-800 px-3 focus:outline-none focus:border-neutral-500"
+                className="w-full text-sm h-10 rounded-lg bg-bg/70 border border-border px-3 focus:outline-none focus:border-border-strong"
               />
             )}
 
@@ -229,7 +229,7 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
               <div className="space-y-2">
                 {entry.sets.map((s, i) => (
                   <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                    <span className="col-span-1 text-xs text-neutral-500 text-right">{i + 1}</span>
+                    <span className="col-span-1 text-xs text-faint text-right">{i + 1}</span>
                     {ex.is_cardio ? (
                       <input
                         type="number"
@@ -239,7 +239,7 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
                           updateSet(ex.id, i, { cardio_minutes: e.target.value })
                         }
                         placeholder="min"
-                        className="col-span-4 h-10 text-sm rounded-lg bg-neutral-950/70 border border-neutral-800 px-2 focus:outline-none focus:border-neutral-500"
+                        className="col-span-4 h-10 text-sm rounded-lg bg-bg/70 border border-border px-2 focus:outline-none focus:border-border-strong"
                       />
                     ) : (
                       <>
@@ -249,14 +249,14 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
                           value={s.weight}
                           onChange={(e) => updateSet(ex.id, i, { weight: e.target.value })}
                           placeholder="weight"
-                          className="col-span-3 h-10 text-sm rounded-lg bg-neutral-950/70 border border-neutral-800 px-2 focus:outline-none focus:border-neutral-500"
+                          className="col-span-3 h-10 text-sm rounded-lg bg-bg/70 border border-border px-2 focus:outline-none focus:border-border-strong"
                         />
                         <select
                           value={s.unit}
                           onChange={(e) =>
                             updateSet(ex.id, i, { unit: e.target.value as 'kg' | 'lb' })
                           }
-                          className="col-span-2 h-10 text-sm rounded-lg bg-neutral-950/70 border border-neutral-800 px-1 focus:outline-none focus:border-neutral-500"
+                          className="col-span-2 h-10 text-sm rounded-lg bg-bg/70 border border-border px-1 focus:outline-none focus:border-border-strong"
                         >
                           <option value="kg">kg</option>
                           <option value="lb">lb</option>
@@ -267,7 +267,7 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
                           value={s.reps}
                           onChange={(e) => updateSet(ex.id, i, { reps: e.target.value })}
                           placeholder="reps"
-                          className="col-span-2 h-10 text-sm rounded-lg bg-neutral-950/70 border border-neutral-800 px-2 focus:outline-none focus:border-neutral-500"
+                          className="col-span-2 h-10 text-sm rounded-lg bg-bg/70 border border-border px-2 focus:outline-none focus:border-border-strong"
                         />
                         <input
                           type="number"
@@ -275,7 +275,7 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
                           value={s.rir}
                           onChange={(e) => updateSet(ex.id, i, { rir: e.target.value })}
                           placeholder="RIR"
-                          className="col-span-2 h-10 text-sm rounded-lg bg-neutral-950/70 border border-neutral-800 px-2 focus:outline-none focus:border-neutral-500"
+                          className="col-span-2 h-10 text-sm rounded-lg bg-bg/70 border border-border px-2 focus:outline-none focus:border-border-strong"
                         />
                       </>
                     )}
@@ -283,7 +283,7 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
                       type="button"
                       onClick={() => removeSet(ex.id, i)}
                       disabled={entry.sets.length <= 1}
-                      className="col-span-2 text-xs text-neutral-500 hover:text-neutral-300 disabled:opacity-30"
+                      className="col-span-2 text-xs text-faint hover:text-muted disabled:opacity-30"
                     >
                       remove
                     </button>
@@ -292,7 +292,7 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
                 <button
                   type="button"
                   onClick={() => addSet(ex.id)}
-                  className="text-xs text-neutral-400 hover:text-neutral-200"
+                  className="text-xs text-muted hover:text-text"
                 >
                   + Add set
                 </button>
@@ -303,13 +303,13 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
               value={entry.client_note}
               onChange={(e) => updateEntry(ex.id, { client_note: e.target.value })}
               placeholder="Note (optional)"
-              className="w-full h-10 text-sm rounded-lg bg-neutral-950/70 border border-neutral-800 px-3 focus:outline-none focus:border-neutral-500"
+              className="w-full h-10 text-sm rounded-lg bg-bg/70 border border-border px-3 focus:outline-none focus:border-border-strong"
             />
           </div>
         );
       })}
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       <button
         type="submit"

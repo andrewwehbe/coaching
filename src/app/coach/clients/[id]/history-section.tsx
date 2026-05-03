@@ -17,8 +17,8 @@ export function HistorySection({ workouts }: { workouts: Workout[] }) {
   if (workouts.length === 0) {
     return (
       <section className="mb-6">
-        <h2 className="text-sm uppercase tracking-wide text-neutral-500 mb-2">History</h2>
-        <p className="rounded-xl border border-neutral-800 bg-neutral-900/30 px-4 py-3 text-sm text-neutral-400">
+        <h2 className="text-sm uppercase tracking-wide text-faint mb-2">History</h2>
+        <p className="rounded-xl border border-border bg-surface/60 px-4 py-3 text-sm text-muted">
           No workouts yet.
         </p>
       </section>
@@ -37,14 +37,14 @@ export function HistorySection({ workouts }: { workouts: Workout[] }) {
 
   return (
     <section className="mb-6">
-      <h2 className="text-sm uppercase tracking-wide text-neutral-500 mb-2">History</h2>
+      <h2 className="text-sm uppercase tracking-wide text-faint mb-2">History</h2>
       <div className="space-y-3">
         {weeks.map(([week, ws]) => (
-          <div key={week} className="rounded-xl border border-neutral-800 bg-neutral-900/30 p-3">
-            <p className="text-xs text-neutral-500 mb-2">
+          <div key={week} className="rounded-xl border border-border bg-surface/60 p-3">
+            <p className="text-xs text-faint mb-2">
               Week of {format(new Date(week), 'MMM d, yyyy')}
               {ws.some((w) => w.is_deload) && (
-                <span className="ml-2 text-amber-300">· deload</span>
+                <span className="ml-2 text-warn">· deload</span>
               )}
             </p>
             <ul className="space-y-1.5">
@@ -91,24 +91,24 @@ function WorkoutRow({ workout }: { workout: Workout }) {
       <button
         type="button"
         onClick={toggle}
-        className="w-full flex items-center justify-between text-left text-sm py-1 hover:text-neutral-100 text-neutral-300"
+        className="w-full flex items-center justify-between text-left text-sm py-1 text-text hover:text-primary-hi transition-colors"
       >
         <span>
           {workout.days?.label ?? 'Workout'}
           {!workout.completed_at && (
-            <span className="ml-2 text-amber-300 text-xs">in progress</span>
+            <span className="ml-2 text-warn text-xs">in progress</span>
           )}
         </span>
-        <span className="text-xs text-neutral-500">
+        <span className="text-xs text-faint">
           {format(new Date(workout.started_at), 'EEE MMM d, h:mma')} · {open ? '−' : '+'}
         </span>
       </button>
       {open && (
-        <div className="mt-2 mb-3 pl-3 border-l border-neutral-800 text-sm">
-          {loading && <p className="text-neutral-500 text-xs">Loading…</p>}
-          {error && <p className="text-red-400 text-xs">{error}</p>}
+        <div className="mt-2 mb-3 pl-3 border-l border-border text-sm">
+          {loading && <p className="text-faint text-xs">Loading…</p>}
+          {error && <p className="text-danger text-xs">{error}</p>}
           {details && details.length === 0 && (
-            <p className="text-neutral-500 text-xs">No logged sets.</p>
+            <p className="text-faint text-xs">No logged sets.</p>
           )}
           {details &&
             details.map((ex) => (
@@ -116,17 +116,17 @@ function WorkoutRow({ workout }: { workout: Workout }) {
                 <p className="font-medium">
                   {ex.name}
                   {ex.status !== 'completed' && (
-                    <span className="ml-2 text-xs text-amber-300">{ex.status}</span>
+                    <span className="ml-2 text-xs text-warn">{ex.status}</span>
                   )}
                 </p>
                 {ex.sets.length > 0 && (
-                  <ul className="text-xs text-neutral-400 mt-1 space-y-1.5">
+                  <ul className="text-xs text-muted mt-1 space-y-1.5">
                     {ex.sets.map((s) => (
                       <li key={s.set_number}>
                         <div>
-                          Set {s.set_number}:{' '}
+                          <span className="text-faint">Set {s.set_number}:</span>{' '}
                           {s.weight != null ? `${s.weight}${s.unit ?? ''} × ${s.reps ?? '?'}` : '—'}
-                          {s.rir != null && ` @ ${s.rir} RIR`}
+                          {s.rir != null && <span className="text-faint"> @ {s.rir} RIR</span>}
                           {s.cardio_minutes != null && ` · ${s.cardio_minutes} min`}
                           {s.notes && ` · ${s.notes}`}
                           {s.video_signed_url && (
@@ -155,7 +155,7 @@ function WorkoutRow({ workout }: { workout: Workout }) {
                   </ul>
                 )}
                 {(ex.client_note || ex.skip_reason || ex.pain_reason) && (
-                  <p className="text-xs text-neutral-500 mt-1">
+                  <p className="text-xs text-faint mt-1">
                     {ex.pain_reason ?? ex.skip_reason ?? ex.client_note}
                   </p>
                 )}

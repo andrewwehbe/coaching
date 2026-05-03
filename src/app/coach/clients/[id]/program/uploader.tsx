@@ -111,13 +111,13 @@ export function ProgramUploader({ clientId }: { clientId: string }) {
           className={`rounded-xl border-2 border-dashed px-6 py-10 text-center cursor-pointer transition-colors ${
             dragActive
               ? 'border-emerald-500 bg-emerald-950/20'
-              : 'border-neutral-700 bg-neutral-900/40 hover:border-neutral-500'
+              : 'border-border-strong bg-surface/60 hover:border-border-strong'
           }`}
         >
           <p className="text-sm font-medium">
             {file ? file.name : 'Tap to choose an .xlsx from your phone'}
           </p>
-          <p className="text-xs text-neutral-500 mt-1">
+          <p className="text-xs text-faint mt-1">
             {busy ? 'Parsing…' : 'Last sheet in workbook is used.'}
           </p>
           <input
@@ -134,7 +134,7 @@ export function ProgramUploader({ clientId }: { clientId: string }) {
       )}
 
       {error && (
-        <p className="text-sm text-red-400">{error}</p>
+        <p className="text-sm text-danger">{error}</p>
       )}
 
       {preview && !preview.ok && (
@@ -154,7 +154,7 @@ export function ProgramUploader({ clientId }: { clientId: string }) {
           <button
             type="button"
             onClick={reset}
-            className="mt-3 text-xs px-3 py-1.5 rounded-lg border border-neutral-700 hover:border-neutral-500"
+            className="mt-3 text-xs px-3 py-1.5 rounded-lg border border-border-strong hover:border-border-strong"
           >
             Choose another file
           </button>
@@ -175,9 +175,9 @@ export function ProgramUploader({ clientId }: { clientId: string }) {
             {preview.program.days.map((d, i) => (
               <li
                 key={i}
-                className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4"
+                className="rounded-xl border border-border bg-surface/60 p-4"
               >
-                <p className="text-xs uppercase tracking-wide text-neutral-500">
+                <p className="text-xs uppercase tracking-wide text-faint">
                   Day {i + 1}
                 </p>
                 <p className="font-medium">{d.label}</p>
@@ -185,10 +185,10 @@ export function ProgramUploader({ clientId }: { clientId: string }) {
                   {d.exercises.map((ex, j) => (
                     <li
                       key={j}
-                      className="flex justify-between gap-3 text-neutral-300"
+                      className="flex justify-between gap-3 text-muted"
                     >
                       <span>{ex.name}</span>
-                      <span className="text-neutral-500 font-mono text-xs">
+                      <span className="text-faint font-mono text-xs">
                         {ex.prescription_raw}
                       </span>
                     </li>
@@ -211,7 +211,7 @@ export function ProgramUploader({ clientId }: { clientId: string }) {
               type="button"
               disabled={busy}
               onClick={reset}
-              className="px-4 py-3 rounded-xl border border-neutral-700 hover:border-neutral-500 disabled:opacity-50 text-sm"
+              className="px-4 py-3 rounded-xl border border-border-strong hover:border-border-strong disabled:opacity-50 text-sm"
             >
               Cancel
             </button>
