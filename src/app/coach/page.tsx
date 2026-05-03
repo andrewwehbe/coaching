@@ -48,6 +48,13 @@ export default async function CoachHome() {
         </Link>
       </header>
 
+      <Link
+        href="/coach/weekly"
+        className="mb-6 inline-flex items-center gap-2 self-start rounded-xl border border-border bg-surface/60 hover:bg-surface hover:border-primary/40 px-4 py-2 text-sm font-medium text-muted hover:text-text transition-colors"
+      >
+        📊 Weekly report
+      </Link>
+
       <AlertsStrip alerts={sortedAlerts} />
 
       <section className="mt-8">
