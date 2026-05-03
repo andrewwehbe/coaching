@@ -81,35 +81,38 @@ export default async function ClientDetailPage(props: { params: Params }) {
   photoPaths.forEach((p, i) => signedByPath.set(p, signed[i]));
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-6 max-w-3xl w-full mx-auto">
-      <header className="mb-4">
-        <Link href="/coach" className="text-sm text-muted hover:text-text transition-colors">
-          ← Dashboard
-        </Link>
-        <div className="flex items-start justify-between mt-2 gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
+    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
+      <Link
+        href="/coach"
+        className="inline-flex items-center text-sm text-muted hover:text-text transition-colors"
+      >
+        ← All clients
+      </Link>
+      <header className="mt-3 mb-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight truncate">{client.name}</h1>
             <p className="text-xs text-faint mt-1">
               Joined {format(new Date(client.created_at), 'MMM d, yyyy')} ·{' '}
               {client.active ? 'active' : 'deactivated'}
             </p>
           </div>
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            <span className="text-xs text-muted px-2 py-1 rounded-full border border-border">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted px-2.5 py-1 rounded-full border border-border">
               {client.weekly_day_target}d/week
             </span>
             {client.photo_check_in_enabled && (
-              <span className="text-xs text-muted px-2 py-1 rounded-full border border-border">
+              <span className="text-xs text-muted px-2.5 py-1 rounded-full border border-border">
                 photos
               </span>
             )}
             {client.body_weight_freq !== 'none' && (
-              <span className="text-xs text-muted px-2 py-1 rounded-full border border-border">
+              <span className="text-xs text-muted px-2.5 py-1 rounded-full border border-border">
                 BW: {client.body_weight_freq}
               </span>
             )}
             {client.meal_plan_enabled && (
-              <span className="text-xs text-muted px-2 py-1 rounded-full border border-border">
+              <span className="text-xs text-muted px-2.5 py-1 rounded-full border border-border">
                 meals
               </span>
             )}
@@ -120,14 +123,14 @@ export default async function ClientDetailPage(props: { params: Params }) {
       <div className="flex flex-wrap gap-2 mb-6">
         <Link
           href={`/coach/clients/${client.id}/log`}
-          className="rounded-xl bg-primary hover:bg-primary-hi text-bg px-4 py-2 text-sm font-semibold transition-colors shadow-[0_8px_24px_-10px_rgba(34,197,94,0.6)]"
+          className="rounded-xl bg-primary hover:bg-primary-hi text-bg px-4 py-2.5 text-sm font-semibold transition-colors shadow-[0_8px_24px_-10px_rgba(34,197,94,0.6)]"
         >
           Log on behalf
         </Link>
         {program && (
           <Link
             href={`/coach/clients/${client.id}/program/edit`}
-            className="rounded-xl border border-border bg-surface/60 hover:bg-surface px-4 py-2 text-sm font-medium transition-colors"
+            className="rounded-xl border border-border bg-surface/60 hover:bg-surface hover:border-border-strong px-4 py-2.5 text-sm font-medium transition-colors"
           >
             Edit program
           </Link>

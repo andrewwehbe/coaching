@@ -82,3 +82,7 @@ input[type="number"] {
   50% { opacity: 0.78; }
 }
 .animate-soft-pulse { animation: softPulse 2.4s ease-in-out infinite; }
+
+/* Horizontal pill rows that should scroll without showing a bar. */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

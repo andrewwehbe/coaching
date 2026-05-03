@@ -29,22 +29,22 @@ export function ResetWorkoutButton({ workoutId }: { workoutId: string }) {
 
   if (confirming) {
     return (
-      <span className="inline-flex items-center gap-1 text-xs">
-        <span className="text-faint">Wipe this workout?</span>
+      <span className="inline-flex items-center gap-2 text-sm">
+        <span className="text-muted">Wipe this workout?</span>
         <button
           type="button"
           onClick={go}
           disabled={busy}
-          className="px-2 py-0.5 rounded-md bg-warn/15 text-warn border border-warn/30 disabled:opacity-50"
+          className="px-3 py-1.5 rounded-lg bg-warn/15 text-warn border border-warn/40 hover:bg-warn/20 font-medium disabled:opacity-50 transition-colors"
         >
           {busy ? '…' : 'Reset'}
         </button>
         <button
           type="button"
           onClick={() => setConfirming(false)}
-          className="text-faint hover:text-text px-1"
+          className="px-3 py-1.5 rounded-lg border border-border text-muted hover:text-text hover:border-border-strong transition-colors"
         >
-          ✕
+          Cancel
         </button>
         {error && <span className="text-warn">{error}</span>}
       </span>
@@ -55,7 +55,7 @@ export function ResetWorkoutButton({ workoutId }: { workoutId: string }) {
     <button
       type="button"
       onClick={() => setConfirming(true)}
-      className="text-xs text-faint hover:text-warn transition-colors"
+      className="text-sm font-medium px-3 py-1.5 rounded-lg border border-border text-muted hover:text-warn hover:border-warn/40 hover:bg-warn/5 transition-colors"
     >
       Reset workout
     </button>

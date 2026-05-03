@@ -63,19 +63,19 @@ export default async function AllHistoryPage({
   const weeks = [...byWeek.entries()].sort(([a], [b]) => (a < b ? 1 : -1));
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-6 max-w-3xl w-full mx-auto">
+    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
       <Link href="/coach/sessions" className="text-sm text-muted hover:text-text transition-colors">
         ← This week
       </Link>
-      <h1 className="mt-2 mb-3 text-2xl font-semibold tracking-tight">All history</h1>
+      <h1 className="mt-3 mb-5 text-2xl font-semibold tracking-tight">All history</h1>
 
-      <div className="mb-5 flex flex-wrap gap-1.5 text-xs">
+      <div className="mb-5 flex flex-wrap gap-1.5 text-sm">
         <Link
           href="/coach/sessions/all"
-          className={`px-2.5 py-1 rounded-full border transition-colors ${
+          className={`px-3 py-1.5 rounded-full border font-medium transition-colors ${
             !clientFilter
               ? 'border-primary/50 bg-primary/10 text-primary-hi'
-              : 'border-border text-muted hover:text-text'
+              : 'border-border text-muted hover:text-text hover:border-border-strong'
           }`}
         >
           Everyone
@@ -84,10 +84,10 @@ export default async function AllHistoryPage({
           <Link
             key={c.id}
             href={`/coach/sessions/all?client=${c.id}`}
-            className={`px-2.5 py-1 rounded-full border transition-colors ${
+            className={`px-3 py-1.5 rounded-full border font-medium transition-colors ${
               clientFilter === c.id
                 ? 'border-primary/50 bg-primary/10 text-primary-hi'
-                : 'border-border text-muted hover:text-text'
+                : 'border-border text-muted hover:text-text hover:border-border-strong'
             }`}
           >
             {c.name}
@@ -133,7 +133,7 @@ export default async function AllHistoryPage({
         {page > 0 ? (
           <Link
             href={`/coach/sessions/all?page=${page - 1}${clientFilter ? `&client=${clientFilter}` : ''}`}
-            className="text-sm text-muted hover:text-text"
+            className="px-3 py-1.5 rounded-lg border border-border text-sm text-muted hover:text-text hover:border-border-strong transition-colors"
           >
             ← Newer
           </Link>
@@ -141,7 +141,7 @@ export default async function AllHistoryPage({
         {hasMore ? (
           <Link
             href={`/coach/sessions/all?page=${page + 1}${clientFilter ? `&client=${clientFilter}` : ''}`}
-            className="text-sm text-muted hover:text-text"
+            className="px-3 py-1.5 rounded-lg border border-border text-sm text-muted hover:text-text hover:border-border-strong transition-colors"
           >
             Older →
           </Link>

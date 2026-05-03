@@ -23,27 +23,18 @@ type Alert = {
 };
 
 const TYPE_CHIPS: Record<Alert['type'], { label: string; className: string }> = {
-  pain: { label: 'Pain', className: 'bg-red-900/60 text-red-200 border-red-700/40' },
-  stalled: { label: 'Stalled', className: 'bg-amber-900/60 text-amber-200 border-amber-700/40' },
-  missed_workout: {
-    label: 'Missed',
-    className: 'bg-amber-900/60 text-amber-200 border-amber-700/40',
-  },
-  workout_started: {
-    label: 'Started',
-    className: 'bg-blue-900/60 text-blue-200 border-blue-700/40',
-  },
+  pain: { label: 'Pain', className: 'bg-danger/10 text-danger border-danger/35' },
+  stalled: { label: 'Stalled', className: 'bg-warn/10 text-warn border-warn/35' },
+  missed_workout: { label: 'Missed', className: 'bg-warn/10 text-warn border-warn/35' },
+  workout_started: { label: 'Started', className: 'bg-accent/10 text-accent border-accent/30' },
   workout_completed: {
     label: 'Completed',
-    className: 'bg-emerald-900/60 text-emerald-300 border-emerald-700/40',
+    className: 'bg-primary/15 text-primary-hi border-primary/30',
   },
-  check_in_due: {
-    label: 'Check-in due',
-    className: 'bg-neutral-800 text-neutral-300 border-neutral-700',
-  },
+  check_in_due: { label: 'Check-in due', className: 'bg-surface-2 text-muted border-border' },
   check_in_submitted: {
     label: 'Check-in',
-    className: 'bg-emerald-900/60 text-emerald-300 border-emerald-700/40',
+    className: 'bg-primary/15 text-primary-hi border-primary/30',
   },
 };
 
@@ -54,7 +45,7 @@ export function AlertsList({ alerts }: { alerts: Alert[] }) {
 
   if (alerts.length === 0) {
     return (
-      <p className="rounded-xl border border-neutral-800 bg-neutral-900/30 px-4 py-3 text-sm text-neutral-400">
+      <p className="rounded-2xl border border-border bg-surface/40 px-4 py-3 text-sm text-muted">
         No alerts.
       </p>
     );
@@ -90,12 +81,12 @@ export function AlertsList({ alerts }: { alerts: Alert[] }) {
   return (
     <>
       {unack.length > 0 && (
-        <div className="flex items-center justify-end mb-2">
+        <div className="flex items-center justify-end mb-3">
           <button
             type="button"
             disabled={busy !== null || pending}
             onClick={ackVisible}
-            className="text-xs text-neutral-400 hover:text-neutral-200 disabled:opacity-50"
+            className="text-xs font-medium px-3 py-1.5 rounded-lg border border-border text-muted hover:text-text hover:border-border-strong hover:bg-surface/60 transition-colors disabled:opacity-50"
           >
             Ack {unack.length} on this page
           </button>
@@ -108,44 +99,44 @@ export function AlertsList({ alerts }: { alerts: Alert[] }) {
           return (
             <li
               key={a.id}
-              className={`rounded-xl px-4 py-2.5 border flex items-center justify-between gap-3 ${
+              className={`rounded-2xl px-4 py-3 border flex items-center justify-between gap-3 transition-colors ${
                 acked
-                  ? 'border-neutral-800 bg-neutral-900/20 opacity-60'
+                  ? 'border-border bg-surface/30 opacity-55'
                   : a.type === 'pain'
-                    ? 'border-red-700/50 bg-red-950/30'
-                    : 'border-neutral-800 bg-neutral-900/40'
+                    ? 'border-danger/40 bg-danger/8'
+                    : 'border-border bg-surface/60'
               }`}
             >
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 mb-0.5">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <span
-                    className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${chip.className}`}
+                    className={`text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded-full border ${chip.className}`}
                   >
                     {chip.label}
                   </span>
                   <Link
                     href={`/coach/clients/${a.client_id}`}
-                    className="text-xs text-neutral-300 hover:text-neutral-100"
+                    className="text-xs text-text hover:text-primary-hi transition-colors"
                   >
                     {a.clients?.name ?? 'Unknown'}
                   </Link>
-                  <span className="text-xs text-neutral-500">
+                  <span className="text-xs text-faint">
                     · {formatDistanceToNow(new Date(a.created_at), { addSuffix: true })}
                   </span>
                 </div>
-                <p className="text-sm">{a.message}</p>
+                <p className="text-sm text-text">{a.message}</p>
               </div>
               {!acked ? (
                 <button
                   type="button"
                   disabled={busy === a.id || pending}
                   onClick={() => ack(a.id)}
-                  className="text-xs text-neutral-400 hover:text-neutral-200 disabled:opacity-50 shrink-0"
+                  className="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border border-border text-muted hover:text-text hover:border-primary/40 hover:bg-primary/10 transition-colors disabled:opacity-50"
                 >
                   Ack
                 </button>
               ) : (
-                <span className="text-xs text-neutral-600 shrink-0">acked</span>
+                <span className="shrink-0 text-xs text-faint">acked</span>
               )}
             </li>
           );

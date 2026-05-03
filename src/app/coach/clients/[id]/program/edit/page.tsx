@@ -32,14 +32,14 @@ export default async function EditProgramPage(props: { params: Params }) {
 
   if (!program) {
     return (
-      <main className="flex flex-1 flex-col px-5 py-6 max-w-3xl w-full mx-auto">
+      <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
         <Link
           href={`/coach/clients/${clientId}`}
           className="text-sm text-muted hover:text-text transition-colors"
         >
           ← {client.name}
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Edit program</h1>
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight">Edit program</h1>
         <p className="mt-4 text-sm text-muted">
           No active program. Upload one first from the client page.
         </p>
@@ -68,14 +68,14 @@ export default async function EditProgramPage(props: { params: Params }) {
   }));
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-6 max-w-3xl w-full mx-auto">
+    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
       <Link
         href={`/coach/clients/${clientId}`}
         className="text-sm text-muted hover:text-text transition-colors"
       >
         ← {client.name}
       </Link>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight">Edit program</h1>
+      <h1 className="mt-3 text-2xl font-semibold tracking-tight">Edit program</h1>
       <p className="mt-1 mb-6 text-xs text-faint">
         Renaming an exercise resets its progress (cue says &ldquo;Log first set&rdquo; until they
         log it again). Removed exercises are archived, not deleted — old history stays intact.

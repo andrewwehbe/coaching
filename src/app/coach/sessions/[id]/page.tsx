@@ -193,11 +193,11 @@ export default async function SessionDetailPage(props: { params: Params }) {
   );
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-6 max-w-3xl w-full mx-auto">
+    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
       <Link href="/coach/sessions" className="text-sm text-muted hover:text-text transition-colors">
         ← Sessions
       </Link>
-      <header className="mt-2 mb-5">
+      <header className="mt-3 mb-5">
         <h1 className="text-2xl font-semibold tracking-tight">
           {client?.name ?? 'Workout'}
           {day?.label && <span className="text-muted font-normal"> · {day.label}</span>}

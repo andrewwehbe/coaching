@@ -98,32 +98,29 @@ export default async function SessionsPage({
   const filtered = mode === 'with_video' ? rows.filter((r) => r.video_count > 0) : rows;
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-6 max-w-3xl w-full mx-auto">
+    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
       <header className="mb-5">
-        <Link href="/coach" className="text-sm text-muted hover:text-text transition-colors">
-          ← Dashboard
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Sessions this week</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Sessions this week</h1>
         <p className="text-xs text-faint mt-1">Week of {format(weekStart, 'MMM d, yyyy')}</p>
       </header>
 
-      <div className="flex gap-2 mb-4 text-xs">
+      <div className="flex gap-2 mb-5 text-sm">
         <Link
           href="/coach/sessions"
-          className={`px-3 py-1.5 rounded-full border transition-colors ${
+          className={`px-3.5 py-1.5 rounded-full border font-medium transition-colors ${
             mode === 'recent'
               ? 'border-primary/50 bg-primary/10 text-primary-hi'
-              : 'border-border text-muted hover:text-text'
+              : 'border-border text-muted hover:text-text hover:border-border-strong'
           }`}
         >
           All ({rows.length})
         </Link>
         <Link
           href="/coach/sessions?sort=with_video"
-          className={`px-3 py-1.5 rounded-full border transition-colors ${
+          className={`px-3.5 py-1.5 rounded-full border font-medium transition-colors ${
             mode === 'with_video'
               ? 'border-primary/50 bg-primary/10 text-primary-hi'
-              : 'border-border text-muted hover:text-text'
+              : 'border-border text-muted hover:text-text hover:border-border-strong'
           }`}
         >
           With video ({rows.filter((r) => r.video_count > 0).length})
@@ -171,9 +168,9 @@ export default async function SessionsPage({
       <div className="mt-8 flex justify-center">
         <Link
           href="/coach/sessions/all"
-          className="text-sm text-primary-hi hover:text-primary px-4 py-2 rounded-xl border border-border hover:border-primary/40 transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-hi hover:text-primary px-5 py-2.5 rounded-xl border border-border bg-surface/40 hover:bg-surface hover:border-primary/40 transition-colors"
         >
-          All history →
+          All history <span aria-hidden>→</span>
         </Link>
       </div>
     </main>

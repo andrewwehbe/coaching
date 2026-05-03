@@ -56,19 +56,16 @@ export default async function CheckInsPage({
   }
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-6 max-w-3xl w-full mx-auto">
-      <Link href="/coach" className="text-sm text-muted hover:text-text transition-colors">
-        ← Dashboard
-      </Link>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight">Check-ins</h1>
+    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
+      <h1 className="text-2xl font-semibold tracking-tight">Check-ins</h1>
 
-      <div className="mt-5 mb-5 flex flex-wrap gap-1.5 text-xs">
+      <div className="mt-5 mb-5 flex flex-wrap gap-1.5 text-sm">
         <Link
           href="/coach/check-ins"
-          className={`px-2.5 py-1 rounded-full border transition-colors ${
+          className={`px-3 py-1.5 rounded-full border font-medium transition-colors ${
             !clientFilter
               ? 'border-primary/50 bg-primary/10 text-primary-hi'
-              : 'border-border text-muted hover:text-text'
+              : 'border-border text-muted hover:text-text hover:border-border-strong'
           }`}
         >
           Everyone
@@ -79,10 +76,10 @@ export default async function CheckInsPage({
             <Link
               key={c.id}
               href={`/coach/check-ins?client=${c.id}`}
-              className={`px-2.5 py-1 rounded-full border transition-colors ${
+              className={`px-3 py-1.5 rounded-full border font-medium transition-colors ${
                 clientFilter === c.id
                   ? 'border-primary/50 bg-primary/10 text-primary-hi'
-                  : 'border-border text-muted hover:text-text'
+                  : 'border-border text-muted hover:text-text hover:border-border-strong'
               }`}
             >
               {c.name}

@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation';
-import Link from 'next/link';
 
 import { readSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
@@ -106,22 +105,16 @@ export default async function SwapsPage() {
   });
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-6 max-w-2xl w-full mx-auto">
+    <main className="flex flex-1 flex-col px-5 py-7 max-w-2xl w-full mx-auto">
       <header className="mb-6">
-        <Link
-          href="/coach"
-          className="text-xs text-neutral-400 hover:text-neutral-200"
-        >
-          ← Coach
-        </Link>
-        <h1 className="text-2xl font-semibold mt-2">Swap proposals</h1>
-        <p className="text-sm text-neutral-400 mt-1">
+        <h1 className="text-2xl font-semibold tracking-tight">Swap proposals</h1>
+        <p className="text-sm text-muted mt-1">
           Exercises stalled long enough to warrant replacement.
         </p>
       </header>
 
       {enriched.length === 0 ? (
-        <p className="text-sm text-neutral-500 text-center py-12">
+        <p className="text-sm text-muted text-center py-12">
           No pending swap proposals.
         </p>
       ) : (

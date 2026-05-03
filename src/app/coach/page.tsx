@@ -4,8 +4,6 @@ import { formatDistanceToNow } from 'date-fns';
 import { requireCoach } from '@/lib/coach-guard';
 import { listClientSummaries, type ClientStatus } from '@/lib/clients';
 import { db } from '@/lib/supabase';
-import { LogoutButton } from '@/components/logout-button';
-import { NotificationsToggle } from '@/components/notifications-toggle';
 import { AlertsStrip } from './alerts-strip';
 
 export const dynamic = 'force-dynamic';
@@ -36,52 +34,31 @@ export default async function CoachHome() {
   });
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-6 max-w-3xl w-full mx-auto">
-      <header className="mb-7">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-muted">Coach</p>
-            <h1 className="text-2xl font-semibold tracking-tight truncate">{user.name}</h1>
-          </div>
-          <NotificationsToggle />
-          <Link
-            href="/coach/clients/new"
-            className="shrink-0 text-sm rounded-xl bg-primary hover:bg-primary-hi text-bg px-3.5 py-1.5 font-semibold transition-colors shadow-[0_8px_24px_-10px_rgba(34,197,94,0.6)]"
-          >
-            + Client
-          </Link>
+    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
+      <header className="mb-7 flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-[0.18em] text-faint">Welcome back</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight truncate">{user.name}</h1>
         </div>
-        <div className="mt-3 flex items-center justify-end gap-4">
-          <Link
-            href="/coach/sessions"
-            className="text-sm text-muted hover:text-text transition-colors"
-          >
-            Sessions
-          </Link>
-          <Link
-            href="/coach/check-ins"
-            className="text-sm text-muted hover:text-text transition-colors"
-          >
-            Check-ins
-          </Link>
-          <Link
-            href="/coach/alerts"
-            className="text-sm text-muted hover:text-text transition-colors"
-          >
-            Alerts
-          </Link>
-          <LogoutButton />
-        </div>
+        <Link
+          href="/coach/clients/new"
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-primary hover:bg-primary-hi text-bg px-4 py-2.5 text-sm font-semibold transition-colors shadow-[0_8px_24px_-10px_rgba(34,197,94,0.6)]"
+        >
+          <span className="text-base leading-none">+</span> New client
+        </Link>
       </header>
 
       <AlertsStrip alerts={sortedAlerts} />
 
-      <section className="mt-7">
+      <section className="mt-8">
         <h2 className="text-xs uppercase tracking-[0.18em] text-faint mb-3">Clients</h2>
         {clients.length === 0 ? (
           <p className="text-muted text-sm">
             No clients yet.{' '}
-            <Link href="/coach/clients/new" className="text-primary-hi hover:text-primary underline transition-colors">
+            <Link
+              href="/coach/clients/new"
+              className="text-primary-hi hover:text-primary underline transition-colors"
+            >
               Add one
             </Link>
             .
@@ -94,9 +71,9 @@ export default async function CoachHome() {
                   href={`/coach/clients/${c.id}`}
                   className="block rounded-2xl px-4 py-3.5 border border-border bg-surface/60 hover:border-border-strong hover:bg-surface transition-all"
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-text">{c.name}</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-text truncate">{c.name}</p>
                       <p className="text-xs text-faint mt-0.5">
                         {c.daysLoggedThisWeek}/{c.weeklyDayTarget} this week
                         {c.lastActivityAt && (
@@ -142,6 +119,8 @@ function StatusChip({ status }: { status: ClientStatus }) {
   };
   const cfg = map[status];
   return (
-    <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${cfg.className}`}>{cfg.label}</span>
+    <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${cfg.className}`}>
+      {cfg.label}
+    </span>
   );
 }

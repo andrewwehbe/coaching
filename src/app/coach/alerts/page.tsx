@@ -41,31 +41,28 @@ export default async function AlertsPage(props: { searchParams: SearchParams }) 
   });
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-6 max-w-3xl w-full mx-auto">
-      <header className="mb-4">
-        <Link href="/coach" className="text-sm text-neutral-400 hover:text-neutral-200">
-          ← Dashboard
-        </Link>
-        <h1 className="text-2xl font-semibold mt-2">Alerts</h1>
+    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
+      <header className="mb-5">
+        <h1 className="text-2xl font-semibold tracking-tight">Alerts</h1>
       </header>
 
-      <div className="flex items-center gap-3 mb-4 text-sm">
+      <div className="flex items-center gap-2 mb-5 text-sm">
         <Link
           href="/coach/alerts"
-          className={`px-3 py-1.5 rounded-lg border ${
+          className={`px-3.5 py-1.5 rounded-full border font-medium transition-colors ${
             !onlyUnack
-              ? 'border-neutral-500 bg-neutral-800/60 text-neutral-100'
-              : 'border-neutral-800 text-neutral-400 hover:text-neutral-200'
+              ? 'border-primary/50 bg-primary/10 text-primary-hi'
+              : 'border-border text-muted hover:text-text hover:border-border-strong'
           }`}
         >
           All
         </Link>
         <Link
           href="/coach/alerts?unack=1"
-          className={`px-3 py-1.5 rounded-lg border ${
+          className={`px-3.5 py-1.5 rounded-full border font-medium transition-colors ${
             onlyUnack
-              ? 'border-neutral-500 bg-neutral-800/60 text-neutral-100'
-              : 'border-neutral-800 text-neutral-400 hover:text-neutral-200'
+              ? 'border-primary/50 bg-primary/10 text-primary-hi'
+              : 'border-border text-muted hover:text-text hover:border-border-strong'
           }`}
         >
           Unacknowledged
@@ -74,11 +71,11 @@ export default async function AlertsPage(props: { searchParams: SearchParams }) 
 
       <AlertsList alerts={normalized} />
 
-      <nav className="mt-6 flex items-center justify-between text-sm">
+      <nav className="mt-7 flex items-center justify-between text-sm">
         {offset > 0 ? (
           <Link
             href={buildUrl(Math.max(0, offset - PAGE_SIZE), onlyUnack)}
-            className="text-neutral-300 hover:text-neutral-100"
+            className="px-3 py-1.5 rounded-lg border border-border text-muted hover:text-text hover:border-border-strong transition-colors"
           >
             ← Newer
           </Link>
@@ -88,7 +85,7 @@ export default async function AlertsPage(props: { searchParams: SearchParams }) 
         {alerts && alerts.length === PAGE_SIZE ? (
           <Link
             href={buildUrl(offset + PAGE_SIZE, onlyUnack)}
-            className="text-neutral-300 hover:text-neutral-100"
+            className="px-3 py-1.5 rounded-lg border border-border text-muted hover:text-text hover:border-border-strong transition-colors"
           >
             Older →
           </Link>

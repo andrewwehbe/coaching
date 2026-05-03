@@ -33,31 +33,31 @@ export default async function ProgramUploadPage(props: { params: Params }) {
     .maybeSingle();
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-6 max-w-2xl w-full mx-auto">
-      <header className="mb-6">
-        <Link
-          href={`/coach/clients/${client.id}`}
-          className="text-xs text-neutral-400 hover:text-neutral-200"
-        >
-          ← {client.name}
-        </Link>
-        <h1 className="text-2xl font-semibold mt-2">Upload program</h1>
-        <p className="text-sm text-neutral-400 mt-1">
+    <main className="flex flex-1 flex-col px-5 py-7 max-w-2xl w-full mx-auto">
+      <Link
+        href={`/coach/clients/${client.id}`}
+        className="text-sm text-muted hover:text-text transition-colors"
+      >
+        ← {client.name}
+      </Link>
+      <header className="mt-3 mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Upload program</h1>
+        <p className="text-sm text-muted mt-1">
           .xlsx file, last sheet is parsed. Logged values in week columns are
           discarded — clean slate.
         </p>
       </header>
 
       {activeProgram && (
-        <div className="mb-5 rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3 text-sm">
-          <p className="text-neutral-400">Active program</p>
-          <p className="font-medium">
+        <div className="mb-5 rounded-2xl border border-border bg-surface/60 px-4 py-3 text-sm">
+          <p className="text-xs uppercase tracking-[0.18em] text-faint">Active program</p>
+          <p className="font-medium mt-1">
             {activeProgram.source_filename ?? 'Unnamed'}{' '}
-            <span className="text-neutral-500">
+            <span className="text-faint font-normal">
               · {new Date(activeProgram.uploaded_at).toLocaleDateString()}
             </span>
           </p>
-          <p className="text-xs text-neutral-500 mt-1">
+          <p className="text-xs text-faint mt-1.5">
             Uploading a new program will mark the current one inactive.
           </p>
         </div>

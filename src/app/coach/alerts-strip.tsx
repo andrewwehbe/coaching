@@ -91,7 +91,7 @@ export function AlertsStrip({ alerts }: { alerts: Alert[] }) {
           type="button"
           disabled={busy === 'all' || pending}
           onClick={ackAll}
-          className="text-xs text-muted hover:text-text transition-colors disabled:opacity-50"
+          className="text-xs font-medium px-2.5 py-1 rounded-lg border border-border text-muted hover:text-text hover:border-border-strong hover:bg-surface/60 transition-colors disabled:opacity-50"
         >
           Ack all
         </button>
@@ -126,7 +126,7 @@ export function AlertsStrip({ alerts }: { alerts: Alert[] }) {
                 type="button"
                 disabled={busy === a.id || pending}
                 onClick={() => ack(a.id)}
-                className="text-xs text-muted hover:text-text transition-colors disabled:opacity-50 shrink-0"
+                className="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border border-border text-muted hover:text-text hover:border-primary/40 hover:bg-primary/10 transition-colors disabled:opacity-50"
               >
                 Ack
               </button>
