@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { startOfWeek, formatISO, subWeeks } from 'date-fns';
+import { startOfWeek, formatISO } from 'date-fns';
 
 import { db } from './supabase';
 
@@ -35,8 +35,6 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
   const supa = db();
   const weekStart = startOfWeek(at, { weekStartsOn: 1 });
   const weekStartIso = formatISO(weekStart, { representation: 'date' });
-  const priorWeekStart = subWeeks(weekStart, 1);
-  const priorWeekIso = formatISO(priorWeekStart, { representation: 'date' });
 
   const { data: clients } = await supa
     .from('clients')
@@ -83,86 +81,16 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
     const setCount = (sets ?? []).length;
     const videoCount = (sets ?? []).filter((s) => s.video_url).length;
 
-    let prs = 0;
-    if (logIds.length) {
-      const logToNameKey = new Map<string, string>();
-      for (const l of logs ?? []) {
-        const raw = l.exercises as unknown;
-        const ex = (Array.isArray(raw) ? raw[0] : raw) as { name_key?: string } | null;
-        if (ex?.name_key) logToNameKey.set(l.id, ex.name_key);
-      }
-      const thisWeekBest = new Map<string, { weight: number; reps: number; unit: string }>();
-      for (const s of sets ?? []) {
-        const nk = logToNameKey.get(s.exercise_log_id);
-        if (!nk || s.weight == null || s.reps == null) continue;
-        const w = Number(s.weight);
-        const here = { weight: w, reps: s.reps, unit: s.unit ?? '' };
-        const cur = thisWeekBest.get(nk);
-        if (
-          !cur ||
-          here.unit === cur.unit && (here.weight > cur.weight || (here.weight === cur.weight && here.reps > cur.reps))
-        ) {
-          thisWeekBest.set(nk, here);
-        }
-      }
-      const nks = [...thisWeekBest.keys()];
-      if (nks.length) {
-        const earliestThisWeek = completedWorkouts
-          .map((w) => w.started_at)
-          .sort()[0];
-        const { data: priorWorkouts } = await supa
-          .from('workouts')
-          .select('id')
-          .eq('client_id', c.id)
-          .lt('started_at', earliestThisWeek);
-        const pwIds = (priorWorkouts ?? []).map((w) => w.id);
-        if (pwIds.length) {
-          const { data: priorLogs } = await supa
-            .from('exercise_logs')
-            .select('id, exercises!inner(name_key)')
-            .in('workout_id', pwIds)
-            .in('exercises.name_key', nks);
-          const plToNk = new Map<string, string>();
-          for (const l of priorLogs ?? []) {
-            const raw = l.exercises as unknown;
-            const ex = (Array.isArray(raw) ? raw[0] : raw) as { name_key?: string } | null;
-            if (ex?.name_key) plToNk.set(l.id, ex.name_key);
-          }
-          const plIds = [...plToNk.keys()];
-          if (plIds.length) {
-            const { data: priorSets } = await supa
-              .from('sets')
-              .select('exercise_log_id, weight, reps, unit')
-              .in('exercise_log_id', plIds)
-              .not('weight', 'is', null)
-              .not('reps', 'is', null);
-            const priorBest = new Map<string, { weight: number; reps: number; unit: string }>();
-            for (const s of priorSets ?? []) {
-              const nk = plToNk.get(s.exercise_log_id);
-              if (!nk || s.weight == null || s.reps == null) continue;
-              const here = { weight: Number(s.weight), reps: s.reps, unit: s.unit ?? '' };
-              const cur = priorBest.get(nk);
-              if (
-                !cur ||
-                here.unit === cur.unit && (here.weight > cur.weight || (here.weight === cur.weight && here.reps > cur.reps))
-              ) {
-                priorBest.set(nk, here);
-              }
-            }
-            for (const [nk, here] of thisWeekBest) {
-              const prior = priorBest.get(nk);
-              if (
-                prior &&
-                here.unit === prior.unit &&
-                (here.weight > prior.weight || (here.weight === prior.weight && here.reps > prior.reps))
-              ) {
-                prs++;
-              }
-            }
-          }
-        }
-      }
-    }
+    // PR = best_efforts row updated this week from a real logged set
+    // (source_set_id non-null). Seeded bests from program upload have
+    // source_set_id = null and don't count.
+    const { count: prCount } = await supa
+      .from('best_efforts')
+      .select('exercise_name_key', { count: 'exact', head: true })
+      .eq('client_id', c.id)
+      .gte('updated_at', new Date(weekStart).toISOString())
+      .not('source_set_id', 'is', null);
+    const prs = prCount ?? 0;
 
     const { count: stalledCount } = await supa
       .from('alerts')
@@ -224,9 +152,6 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
     totalDaysDone += daysDone;
     totalTarget += c.weekly_day_target;
   }
-
-  // Reference unused var to keep eslint happy if priorWeekIso ever gets used.
-  void priorWeekIso;
 
   const completionPct = totalTarget === 0 ? 0 : Math.round((totalDaysDone / totalTarget) * 100);
 
