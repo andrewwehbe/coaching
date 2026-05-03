@@ -8,6 +8,7 @@ import {
   countConsecutiveStalled,
   type ExerciseLogRow,
 } from './plateau';
+import { matchCatalogForMany, type CatalogEntry } from './catalog';
 
 /**
  * Per-client suggestions for the weekly report. Implements the staged
@@ -49,6 +50,12 @@ export type Suggestion = {
   apply?:
     | { kind: 'add_set'; exerciseIds: string[]; targetName: string }
     | { kind: 'archive_day'; dayId: string; dayLabel: string }
+    | {
+        kind: 'swap_exercise';
+        exerciseIds: string[];
+        targetName: string;
+        alternatives: { name: string; group_key: string }[];
+      }
     | null;
 };
 
@@ -111,9 +118,9 @@ export async function buildSuggestionsByClient(
   const { data: logs } = allWorkoutIds.length
     ? await supa
         .from('exercise_logs')
-        .select('id, workout_id, pain_reason, client_note, exercises(name, name_key)')
+        .select('id, workout_id, exercise_id, pain_reason, client_note, exercises(name, name_key)')
         .in('workout_id', allWorkoutIds)
-    : { data: [] as Array<{ id: string; workout_id: string; pain_reason: string | null; client_note: string | null; exercises: unknown }> };
+    : { data: [] as Array<{ id: string; workout_id: string; exercise_id: string; pain_reason: string | null; client_note: string | null; exercises: unknown }> };
 
   const logIds = (logs ?? []).map((l) => l.id);
   const { data: sets } = logIds.length
@@ -140,6 +147,10 @@ export async function buildSuggestionsByClient(
 
   // ---- PAIN findings (this week's logs only) ----
   const thisWeekStartTs = new Date(thisWeekStart).toISOString();
+  // Track pain suggestions by (clientId, exerciseName) so we attach
+  // exerciseIds / catalog alternatives in the final enrichment pass.
+  const painPending: Array<{ clientId: string; exName: string; suggestionIndex: number }> = [];
+
   for (const l of logs ?? []) {
     const cid = workoutToClient.get(l.workout_id);
     if (!cid) continue;
@@ -163,6 +174,7 @@ export async function buildSuggestionsByClient(
         : 'Pain flagged this session. Swap to a different angle/length variant; drop load 20% on first session back.',
       apply: null,
     });
+    painPending.push({ clientId: cid, exName, suggestionIndex: arr.length - 1 });
   }
 
   // ---- For each client: adherence, plateau, skipped-day ----
@@ -272,8 +284,13 @@ export async function buildSuggestionsByClient(
             id: `swap:${cid}:${nameKey}`,
             type: 'swap_candidate',
             title: `${displayName} — swap candidate`,
-            body: `${stalled} consecutive non-improving exposures despite a sufficient observation window. Consider rotating to a non-redundant variation — ONLY after RIR audit, volume increase, execution audit, rest, and recovery have been addressed (Valério 2026: variation isn't superior when volume + effort are sufficient). Hold the new exercise ≥4 weeks. — picker coming with the curated exercise list.`,
-            apply: null,
+            body: `${stalled} consecutive non-improving exposures despite a sufficient observation window. Consider rotating to a non-redundant variation — ONLY after RIR audit, volume increase, execution audit, rest, and recovery have been addressed (Valério 2026: variation isn't superior when volume + effort are sufficient). Hold the new exercise ≥4 weeks.`,
+            apply: {
+              kind: 'swap_exercise',
+              exerciseIds,
+              targetName: displayName,
+              alternatives: [], // filled in below
+            },
           });
         }
       }
@@ -325,6 +342,62 @@ export async function buildSuggestionsByClient(
         }
       }
     }
+  }
+
+  // ---- Final enrichment pass: attach catalog alternatives + PAIN targets ----
+  // 1) Resolve PAIN exerciseIds (every active exercise on the client's
+  //    program with the same name as the painful one).
+  for (const p of painPending) {
+    const prog = programByClient.get(p.clientId);
+    if (!prog) continue;
+    const matchKey = p.exName.trim().toLowerCase();
+    const ids: string[] = [];
+    for (const d of prog.days ?? []) {
+      for (const e of d.exercises ?? []) {
+        if (e.archived_at) continue;
+        if (e.name.trim().toLowerCase() === matchKey) ids.push(e.id);
+      }
+    }
+    if (ids.length === 0) continue;
+    const arr = result.get(p.clientId)!;
+    arr[p.suggestionIndex] = {
+      ...arr[p.suggestionIndex],
+      apply: {
+        kind: 'swap_exercise',
+        exerciseIds: ids,
+        targetName: p.exName,
+        alternatives: [], // filled in next step
+      },
+    };
+  }
+
+  // 2) Batch-match every targetName against the catalog and attach
+  //    alternatives for swap_candidate + pain suggestions.
+  const namesToMatch = new Set<string>();
+  for (const sugs of result.values()) {
+    for (const s of sugs) {
+      if (s.apply && s.apply.kind === 'swap_exercise') namesToMatch.add(s.apply.targetName);
+    }
+  }
+  if (namesToMatch.size > 0) {
+    const matches = await matchCatalogForMany([...namesToMatch]);
+    for (const sugs of result.values()) {
+      for (const s of sugs) {
+        if (!s.apply || s.apply.kind !== 'swap_exercise') continue;
+        const m = matches.get(s.apply.targetName);
+        if (!m || m.alternatives.length === 0) {
+          // No catalog match → drop apply so the UI doesn't render an empty picker.
+          s.apply = null;
+          continue;
+        }
+        s.apply.alternatives = m.alternatives.map((c: CatalogEntry) => ({
+          name: c.name,
+          group_key: c.group_key,
+        }));
+      }
+    }
+  } else {
+    // No swap_exercise applies — nothing to enrich.
   }
 
   return result;

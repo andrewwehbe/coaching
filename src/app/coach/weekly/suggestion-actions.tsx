@@ -18,18 +18,36 @@ export function SuggestionRow({
   const [done, setDone] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [pickedName, setPickedName] = useState('');
 
   if (dismissed) return null;
 
-  async function apply() {
+  async function apply(replacementName?: string) {
     if (!suggestion.apply) return;
     setBusy(true);
     setError(null);
     try {
-      const payload =
-        suggestion.apply.kind === 'add_set'
-          ? { kind: 'add_set', clientId, exerciseIds: suggestion.apply.exerciseIds }
-          : { kind: 'archive_day', clientId, dayId: suggestion.apply.dayId };
+      let payload: Record<string, unknown>;
+      if (suggestion.apply.kind === 'add_set') {
+        payload = { kind: 'add_set', clientId, exerciseIds: suggestion.apply.exerciseIds };
+      } else if (suggestion.apply.kind === 'archive_day') {
+        payload = { kind: 'archive_day', clientId, dayId: suggestion.apply.dayId };
+      } else if (suggestion.apply.kind === 'swap_exercise') {
+        if (!replacementName) {
+          setError('Pick a replacement first.');
+          setBusy(false);
+          return;
+        }
+        payload = {
+          kind: 'swap_exercise',
+          clientId,
+          exerciseIds: suggestion.apply.exerciseIds,
+          replacementName,
+        };
+      } else {
+        return;
+      }
       const res = await fetch('/api/coach/suggestions/apply', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -53,7 +71,12 @@ export function SuggestionRow({
       ? `Adds 1 set to ${suggestion.apply.targetName}`
       : suggestion.apply?.kind === 'archive_day'
         ? `Removes ${suggestion.apply.dayLabel} from the split`
-        : null;
+        : suggestion.apply?.kind === 'swap_exercise'
+          ? `Replaces ${suggestion.apply.targetName} across the program`
+          : null;
+
+  const isSwap = suggestion.apply?.kind === 'swap_exercise';
+  const swapApply = isSwap && suggestion.apply?.kind === 'swap_exercise' ? suggestion.apply : null;
 
   return (
     <div
@@ -78,20 +101,23 @@ export function SuggestionRow({
           {error && <p className="mt-1.5 text-xs text-danger">{error}</p>}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          {suggestion.apply && !done && (
+          {suggestion.apply && !done && !picking && (
             <button
               type="button"
-              onClick={apply}
+              onClick={() => {
+                if (isSwap) setPicking(true);
+                else apply();
+              }}
               disabled={busy || pending}
               className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary-hi text-bg text-xs font-semibold disabled:opacity-50 transition-colors"
             >
-              {busy ? '…' : 'Apply'}
+              {busy ? '…' : isSwap ? 'Pick swap' : 'Apply'}
             </button>
           )}
           {done && (
             <span className="text-xs text-primary-hi font-medium px-2 py-1.5">Applied</span>
           )}
-          {!done && (
+          {!done && !picking && (
             <button
               type="button"
               onClick={() => setDismissed(true)}
@@ -103,6 +129,53 @@ export function SuggestionRow({
           )}
         </div>
       </div>
+
+      {picking && swapApply && !done && (
+        <div className="mt-3 pt-3 border-t border-border/60 space-y-2">
+          <label className="block text-[11px] uppercase tracking-[0.18em] text-faint">
+            Replace with
+          </label>
+          {swapApply.alternatives.length === 0 ? (
+            <p className="text-xs text-warn">
+              No catalog alternatives found for &quot;{swapApply.targetName}&quot;.
+            </p>
+          ) : (
+            <select
+              value={pickedName}
+              onChange={(e) => setPickedName(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-bg/70 border border-border text-text text-sm focus:outline-none focus:border-border-strong"
+            >
+              <option value="">Select replacement…</option>
+              {swapApply.alternatives.map((a) => (
+                <option key={a.name} value={a.name}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => apply(pickedName)}
+              disabled={busy || pending || !pickedName}
+              className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary-hi text-bg text-xs font-semibold disabled:opacity-50 transition-colors"
+            >
+              {busy ? 'Saving…' : 'Confirm swap'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPicking(false);
+                setPickedName('');
+                setError(null);
+              }}
+              className="px-3 py-1.5 rounded-lg border border-border bg-surface/40 text-text hover:bg-surface hover:border-border-strong text-xs font-medium transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
