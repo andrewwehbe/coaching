@@ -153,7 +153,9 @@ export function WorkoutSession({
       if (current.isCardio) {
         body.cardioMinutes = cardioMin ? Number(cardioMin) : null;
       } else {
-        body.weight = weight ? Number(weight) : null;
+        // Normalize comma decimal separator (Arabic/European keyboards) to dot
+        // so Number() doesn't return NaN.
+        body.weight = weight ? Number(weight.replace(',', '.')) : null;
         body.unit = unit;
         body.reps = reps ? Number(reps) : null;
         body.rir = rir ? Number(rir) : null;
@@ -684,9 +686,8 @@ function StrengthFields({
         <div className="flex-1">
           <label className="block text-xs text-faint mb-1">Weight</label>
           <input
-            type="number"
+            type="text"
             inputMode="decimal"
-            step="any"
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
             className="w-full h-12 px-3 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-lg tabular-nums transition-shadow"

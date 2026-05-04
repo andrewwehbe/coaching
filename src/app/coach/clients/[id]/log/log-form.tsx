@@ -111,7 +111,7 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
               ? entry.sets
                   .map((s, i) => ({
                     set_number: i + 1,
-                    weight: s.weight ? Number(s.weight) : null,
+                    weight: s.weight ? Number(s.weight.replace(',', '.')) : null,
                     unit: s.weight ? s.unit : null,
                     reps: s.reps ? Number(s.reps) : null,
                     rir: s.rir ? Number(s.rir) : null,
@@ -244,9 +244,8 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
                     ) : (
                       <>
                         <input
-                          type="number"
+                          type="text"
                           inputMode="decimal"
-                          step="any"
                           value={s.weight}
                           onChange={(e) => updateSet(ex.id, i, { weight: e.target.value })}
                           placeholder="weight"

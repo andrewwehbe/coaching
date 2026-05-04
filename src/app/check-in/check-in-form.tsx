@@ -83,7 +83,8 @@ export function CheckInForm({ defaultUnit }: { defaultUnit: 'kg' | 'lb' }) {
     try {
       const body: Record<string, unknown> = {};
       if (weight) {
-        body.bodyWeight = Number(weight);
+        // Normalize comma decimal separator (Arabic/European keyboards) to dot.
+        body.bodyWeight = Number(weight.replace(',', '.'));
         body.bodyWeightUnit = unit;
       }
       if (notes) body.notes = notes;
@@ -143,9 +144,8 @@ export function CheckInForm({ defaultUnit }: { defaultUnit: 'kg' | 'lb' }) {
         <div className="flex-1">
           <label className="block text-xs text-faint mb-1">Body weight</label>
           <input
-            type="number"
+            type="text"
             inputMode="decimal"
-            step="any"
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
             placeholder="—"
