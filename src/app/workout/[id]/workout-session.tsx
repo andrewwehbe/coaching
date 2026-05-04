@@ -686,6 +686,7 @@ function StrengthFields({
           <input
             type="number"
             inputMode="decimal"
+            step="any"
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
             className="w-full h-12 px-3 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-lg tabular-nums transition-shadow"

@@ -246,6 +246,7 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
                         <input
                           type="number"
                           inputMode="decimal"
+                          step="any"
                           value={s.weight}
                           onChange={(e) => updateSet(ex.id, i, { weight: e.target.value })}
                           placeholder="weight"

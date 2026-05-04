@@ -145,6 +145,7 @@ export function CheckInForm({ defaultUnit }: { defaultUnit: 'kg' | 'lb' }) {
           <input
             type="number"
             inputMode="decimal"
+            step="any"
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
             placeholder="—"
