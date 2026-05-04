@@ -99,7 +99,22 @@ export function WorkoutSession({
   // Prev/Next. Starts at the first incomplete one. After they log a final
   // set / skip / pain / "done", we auto-advance via advanceFrom().
   const [currentIdx, setCurrentIdx] = useState(() => {
-    const i = exercises.findIndex((e) => e.logStatus == null);
+    // The set route flips status to 'completed' on the very first set, so on
+    // a refresh mid-exercise the server-side status alone isn't enough to
+    // tell "done" from "still has sets left". Treat a 'completed' strength
+    // exercise with sets.length < prescribedSets as still active.
+    const i = exercises.findIndex((e) => {
+      if (e.logStatus == null) return true;
+      if (
+        e.logStatus === 'completed' &&
+        !e.isCardio &&
+        e.prescribedSets != null &&
+        e.sets.length < e.prescribedSets
+      ) {
+        return true;
+      }
+      return false;
+    });
     return i >= 0 ? i : 0;
   });
   const current = state[currentIdx] ?? null;
