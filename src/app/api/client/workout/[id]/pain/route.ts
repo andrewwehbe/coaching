@@ -8,6 +8,12 @@ import { insertAlert } from '@/lib/notify';
 const Body = z.object({
   exerciseId: z.string().uuid(),
   reason: z.string().min(1).max(2000),
+  // false (default): pain == skip the exercise; status becomes 'pain' and the
+  // workout advances. true: client chose to continue logging this exercise
+  // anyway. Status stays 'completed' so the regular /set route can keep
+  // upserting sets, but pain_reason is still recorded and the coach is
+  // alerted just the same.
+  proceed: z.boolean().optional(),
 });
 
 type Params = Promise<{ id: string }>;
@@ -38,7 +44,7 @@ export async function POST(req: Request, props: { params: Params }) {
       {
         workout_id: ctx.workout.id,
         exercise_id: parsed.data.exerciseId,
-        status: 'pain',
+        status: parsed.data.proceed ? 'completed' : 'pain',
         pain_reason: parsed.data.reason,
       },
       { onConflict: 'workout_id,exercise_id' }

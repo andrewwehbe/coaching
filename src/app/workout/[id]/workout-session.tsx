@@ -34,6 +34,10 @@ export type ExerciseState = {
   cardioType: 'treadmill' | 'elliptical' | 'stairmaster' | null;
   cue: Cue;
   logStatus: 'completed' | 'skipped' | 'pain' | null;
+  // True when the client reported pain but chose to keep going on this
+  // exercise. logStatus stays null so they can still log sets; this just
+  // drives a visible "pain reported" hint on the active card.
+  painReportedAndContinuing?: boolean;
   sets: LoggedSet[];
 };
 
@@ -274,13 +278,14 @@ export function WorkoutSession({
     }
   }
 
-  async function submitPain(reason: string) {
+  async function submitPain(reason: string, proceed: boolean) {
     if (modal.kind !== 'pain') return;
     setSubmitting(true);
     try {
       const res = await enqueueAndSend(`/api/client/workout/${workoutId}/pain`, {
         exerciseId: modal.exerciseId,
         reason,
+        proceed,
       });
       if (!res.ok && res.status !== 202) {
         alert('Failed to send pain report');
@@ -288,13 +293,17 @@ export function WorkoutSession({
       }
       setState((prev) => {
         const next = prev.map((e) =>
-          e.id === modal.exerciseId ? { ...e, logStatus: 'pain' as const } : e
+          e.id === modal.exerciseId
+            ? proceed
+              ? { ...e, painReportedAndContinuing: true }
+              : { ...e, logStatus: 'pain' as const }
+            : e
         );
-        setCurrentIdx((idx) => advanceFrom(next, idx));
+        if (!proceed) setCurrentIdx((idx) => advanceFrom(next, idx));
         return next;
       });
       setModal({ kind: 'none' });
-      resetForm();
+      if (!proceed) resetForm();
     } finally {
       setSubmitting(false);
     }
@@ -494,6 +503,9 @@ export function WorkoutSession({
         {current.logStatus === 'pain' && (
           <span className="ml-2 text-warn normal-case tracking-normal">· pain reported</span>
         )}
+        {current.painReportedAndContinuing && current.logStatus !== 'pain' && (
+          <span className="ml-2 text-warn normal-case tracking-normal">· pain reported · go carefully</span>
+        )}
       </p>
       <h1 className="text-3xl font-bold leading-tight tracking-tight mb-2">{current.name}</h1>
       <p className="text-sm text-muted mb-5">{current.prescriptionRaw ?? '—'}</p>
@@ -637,21 +649,29 @@ export function WorkoutSession({
       {modal.kind === 'skip' && (
         <ReasonModal
           title={`Skip ${modal.name}?`}
-          submitLabel="Skip exercise"
           onCancel={() => setModal({ kind: 'none' })}
-          onSubmit={submitSkip}
           submitting={submitting}
+          actions={[{ label: 'Skip exercise', tone: 'primary', onClick: submitSkip }]}
         />
       )}
       {modal.kind === 'pain' && (
         <ReasonModal
           title={`Report pain on ${modal.name}`}
-          subtitle="Your coach will be notified immediately."
-          submitLabel="Send to coach"
-          tone="danger"
+          subtitle="Your coach will be notified either way."
           onCancel={() => setModal({ kind: 'none' })}
-          onSubmit={submitPain}
           submitting={submitting}
+          actions={[
+            {
+              label: 'Continue with exercise',
+              tone: 'primary',
+              onClick: (r) => submitPain(r, true),
+            },
+            {
+              label: 'Skip exercise',
+              tone: 'danger',
+              onClick: (r) => submitPain(r, false),
+            },
+          ]}
         />
       )}
     </main>
@@ -846,21 +866,23 @@ function VideoUpload({
   );
 }
 
+type ModalAction = {
+  label: string;
+  tone: 'primary' | 'danger';
+  onClick: (reason: string) => void;
+};
+
 function ReasonModal({
   title,
   subtitle,
-  submitLabel,
-  tone = 'neutral',
+  actions,
   onCancel,
-  onSubmit,
   submitting,
 }: {
   title: string;
   subtitle?: string;
-  submitLabel: string;
-  tone?: 'neutral' | 'danger';
+  actions: ModalAction[];
   onCancel: () => void;
-  onSubmit: (reason: string) => void;
   submitting: boolean;
 }) {
   const [text, setText] = useState('');
@@ -877,25 +899,28 @@ function ReasonModal({
           rows={3}
           className="w-full px-3 py-2 rounded-xl bg-bg border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-sm transition-shadow placeholder:text-faint"
         />
-        <div className="flex gap-2">
+        <div className="space-y-2">
+          {actions.map((a) => (
+            <button
+              key={a.label}
+              type="button"
+              disabled={!text.trim() || submitting}
+              onClick={() => a.onClick(text.trim())}
+              className={`w-full h-11 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors ${
+                a.tone === 'danger'
+                  ? 'bg-danger hover:bg-danger/90 text-bg'
+                  : 'bg-primary hover:bg-primary-hi text-bg'
+              }`}
+            >
+              {a.label}
+            </button>
+          ))}
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 h-11 rounded-xl border border-border text-sm font-medium text-text hover:bg-surface-2 transition-colors"
+            className="w-full h-11 rounded-xl border border-border text-sm font-medium text-text hover:bg-surface-2 transition-colors"
           >
             Cancel
-          </button>
-          <button
-            type="button"
-            disabled={!text.trim() || submitting}
-            onClick={() => onSubmit(text.trim())}
-            className={`flex-1 h-11 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors ${
-              tone === 'danger'
-                ? 'bg-danger hover:bg-danger/90 text-bg'
-                : 'bg-primary hover:bg-primary-hi text-bg'
-            }`}
-          >
-            {submitLabel}
           </button>
         </div>
       </div>
