@@ -72,10 +72,10 @@ export default async function TodayPage() {
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className={`text-xs uppercase tracking-wide ${isSuggested ? 'text-primary-hi' : 'text-faint'}`}>
-                    {d.label.split(' - ')[0] ?? `Day ${d.dayIndex}`}
+                    Day {d.dayIndex}
                   </p>
                   <p className="font-medium text-text">
-                    {d.label.split(' - ').slice(1).join(' - ') || d.label}
+                    {d.label.replace(/^Day\s*\d+\s*[—-]\s*/i, '') || d.label}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
