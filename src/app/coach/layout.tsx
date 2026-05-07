@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { requireCoach } from '@/lib/coach-guard';
 import { LogoutButton } from '@/components/logout-button';
 import { NotificationsToggle } from '@/components/notifications-toggle';
+import { SwitchToSelfButton } from '@/components/switch-to-self-button';
 import { CoachNav } from './coach-nav';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +22,7 @@ export default async function CoachLayout({ children }: { children: React.ReactN
           </Link>
           <div className="flex items-center gap-3 shrink-0">
             <NotificationsToggle />
+            <SwitchToSelfButton />
             <LogoutButton />
           </div>
         </div>
