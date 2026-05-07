@@ -5,6 +5,12 @@ import { readSession } from '@/lib/auth';
 import { buildTodaySchedule } from '@/lib/schedule';
 import { LogoutButton } from '@/components/logout-button';
 import { NotificationsToggle } from '@/components/notifications-toggle';
+import { SwitchToCoachButton } from '@/components/switch-to-coach-button';
+
+// Mirror of /api/client/switch-to-coach so the button only renders for the
+// linked client (no point showing "Coach" to other clients).
+const LINKED_CLIENT_ID =
+  process.env.COACH_LINKED_CLIENT_ID || '8a06a900-aec4-44fc-8da4-9f90581a74c0';
 import { BeginButton } from './begin-button';
 import { MissedButton } from './missed-button';
 
@@ -45,6 +51,7 @@ export default async function TodayPage() {
           >
             Check-in
           </Link>
+          {user.id === LINKED_CLIENT_ID && <SwitchToCoachButton />}
           <LogoutButton />
         </div>
       </header>
