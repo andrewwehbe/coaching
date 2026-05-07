@@ -108,6 +108,7 @@ export default async function AllHistoryPage({
                   <li key={r.id}>
                     <Link
                       href={`/coach/sessions/${r.id}`}
+                      prefetch={false}
                       className="flex items-baseline justify-between gap-3 px-4 py-2.5 rounded-xl border border-border bg-surface/60 hover:bg-surface hover:border-primary/40 transition-colors"
                     >
                       <span className="text-sm">

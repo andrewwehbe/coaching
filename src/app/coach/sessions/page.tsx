@@ -118,6 +118,7 @@ export default async function SessionsPage({
             <li key={r.id}>
               <Link
                 href={`/coach/sessions/${r.id}`}
+                prefetch={false}
                 className="block rounded-2xl border border-border bg-surface/60 hover:bg-surface hover:border-primary/40 transition-colors p-4"
               >
                 <div className="flex items-baseline justify-between gap-3">

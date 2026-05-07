@@ -11,6 +11,9 @@ export function LogoutButton({ label = 'Sign out' }: { label?: string }) {
       onClick={async () => {
         setBusy(true);
         await fetch('/api/auth/logout', { method: 'POST' });
+        // Drop the SW's cached HTML so the next user on this device doesn't
+        // see the previous user's pages from cache.
+        navigator.serviceWorker?.controller?.postMessage({ type: 'clear-cache' });
         // Hard navigation: forces the browser to drop any cached RSC
         // state and re-request /login with no session cookie.
         window.location.href = '/login';

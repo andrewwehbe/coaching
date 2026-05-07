@@ -79,6 +79,7 @@ export default async function CheckInsPage({
             <Link
               key={c.id}
               href={`/coach/check-ins?client=${c.id}`}
+              prefetch={false}
               className={`px-3 py-1.5 rounded-full border font-medium transition-colors ${
                 clientFilter === c.id
                   ? 'border-primary/50 bg-primary/10 text-primary-hi'

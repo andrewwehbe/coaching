@@ -1,12 +1,16 @@
 /* Coaching app service worker.
    Strategy:
    - Precache /offline so navigation always has a fallback when network fails.
-   - Network-first for navigation (HTML) — apps must reflect server state quickly.
+   - Stale-while-revalidate for navigation HTML — return cache instantly, refresh
+     in the background. Saves a full HTML round-trip on every "quick check"
+     (the dominant cellular cost for clients who just open the app to log a set).
    - Cache-first for /icons + /_next/static — long-lived hashed assets.
    - Never cache API responses (would leak stale logs / sessions).
+   - Logout posts {type:'clear-cache'} so a different user on the same device
+     doesn't see the previous user's cached HTML.
 */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const APP_CACHE = `coaching-app-${VERSION}`;
 const STATIC_CACHE = `coaching-static-${VERSION}`;
 const OFFLINE_URL = '/offline';
@@ -48,21 +52,39 @@ self.addEventListener('fetch', (event) => {
   // Never cache API or auth — always go to network.
   if (url.pathname.startsWith('/api/')) return;
 
-  // Navigation requests: network-first, fall back to /offline.
+  // Navigation requests: stale-while-revalidate.
+  // - If we have a cached version, serve it instantly and refresh in background.
+  // - Otherwise wait for network, fall back to /offline if it fails.
   if (req.mode === 'navigate') {
     event.respondWith(
       (async () => {
-        try {
-          const fresh = await fetch(req);
-          return fresh;
-        } catch {
-          const cache = await caches.open(APP_CACHE);
-          const cached = await cache.match(OFFLINE_URL);
-          return (
-            cached ??
-            new Response('Offline', { status: 503, statusText: 'offline' })
-          );
+        const cache = await caches.open(APP_CACHE);
+        const cached = await cache.match(req);
+
+        const networkPromise = fetch(req)
+          .then((res) => {
+            // Only cache successful HTML responses. Don't cache redirects (auth
+            // bounces) or errors.
+            if (res.ok && res.type === 'basic') {
+              cache.put(req, res.clone()).catch(() => {});
+            }
+            return res;
+          })
+          .catch(() => null);
+
+        if (cached) {
+          // Fire-and-forget the background refresh so the next nav is fresh.
+          event.waitUntil(networkPromise);
+          return cached;
         }
+
+        const fresh = await networkPromise;
+        if (fresh) return fresh;
+
+        const offline = await cache.match(OFFLINE_URL);
+        return (
+          offline ?? new Response('Offline', { status: 503, statusText: 'offline' })
+        );
       })()
     );
     return;
@@ -129,7 +151,10 @@ self.addEventListener('notificationclick', (event) => {
 
 /* Allow page to ping the SW to replay queued writes. The actual replay
    happens in the page (it owns the auth cookie context); the SW just
-   broadcasts to all clients so any open tab can flush. */
+   broadcasts to all clients so any open tab can flush.
+
+   Also: clear-cache, posted by LogoutButton so a different user on the same
+   device doesn't get served the previous user's cached HTML. */
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'flush-queue') {
     event.waitUntil(
@@ -138,5 +163,7 @@ self.addEventListener('message', (event) => {
         for (const c of all) c.postMessage({ type: 'flush-queue' });
       })()
     );
+  } else if (event.data?.type === 'clear-cache') {
+    event.waitUntil(caches.delete(APP_CACHE));
   }
 });

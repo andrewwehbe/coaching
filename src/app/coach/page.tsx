@@ -76,6 +76,7 @@ export default async function CoachHome() {
               <li key={c.id}>
                 <Link
                   href={`/coach/clients/${c.id}`}
+                  prefetch={false}
                   className="block rounded-2xl px-4 py-3.5 border border-border bg-surface/60 hover:border-border-strong hover:bg-surface transition-all"
                 >
                   <div className="flex items-center justify-between gap-3">

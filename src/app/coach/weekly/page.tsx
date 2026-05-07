@@ -45,6 +45,7 @@ export default async function WeeklyReportPage() {
               <div className="flex items-center justify-between gap-3">
                 <Link
                   href={`/coach/clients/${r.clientId}`}
+                  prefetch={false}
                   className="font-medium text-text hover:text-primary-hi transition-colors"
                 >
                   {r.name}
