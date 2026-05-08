@@ -5,7 +5,15 @@
 
 .loadin-screen {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* Fallback for older browsers, then dynamic viewport for iOS Safari
+     so the bar's shaft reaches the actual bottom of the visible area
+     instead of disappearing behind the URL bar. */
+  height: 100vh;
+  height: 100dvh;
   background: var(--bg);
   color: var(--text);
   display: flex;
@@ -92,7 +100,7 @@
   filter: blur(10px);
   pointer-events: none;
   opacity: 0;
-  animation: loadinFloorGlow 1100ms 2700ms cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  animation: loadinFloorGlow 1100ms 2550ms cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
 }
 .loadin-flash {
   position: absolute;
@@ -106,19 +114,20 @@
   pointer-events: none;
   opacity: 0;
   animation:
-    loadinImpactFlash 500ms 1200ms ease-out,
-    loadinImpactFlash 500ms 1800ms ease-out,
-    loadinImpactFlash 700ms 2600ms ease-out,
-    loadinImpactFlash 500ms 3400ms ease-out;
+    loadinImpactFlash 600ms 1350ms ease-out,
+    loadinImpactFlash 600ms 1950ms ease-out,
+    loadinImpactFlash 700ms 2550ms ease-out,
+    loadinImpactFlash 600ms 3150ms ease-out;
 }
 
-/* shake the stage on each plate landing */
+/* shake the stage on every plate landing — same intensity for all so
+   each drop feels equally heavy. */
 .loadin-stage {
   animation:
-    loadinShakeSmall 200ms 1200ms ease-out,
-    loadinShakeSmall 200ms 1800ms ease-out,
-    loadinShake      380ms 2600ms ease-out,
-    loadinShakeSmall 200ms 3400ms ease-out;
+    loadinShake 380ms 1350ms ease-out,
+    loadinShake 380ms 1950ms ease-out,
+    loadinShake 380ms 2550ms ease-out,
+    loadinShake 380ms 3150ms ease-out;
 }
 
 /* CTA — Start button overlays the bottom of the stage so the bar
@@ -146,7 +155,7 @@
   gap: 12px;
   opacity: 0;
   transform: translateY(8px);
-  animation: loadinRisingFade 600ms 2900ms cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  animation: loadinRisingFade 600ms 3350ms cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
   box-shadow: 0 14px 40px -14px rgba(34, 197, 94, 0.7);
   transition: background 160ms, transform 100ms;
 }
@@ -212,14 +221,15 @@
   100% { opacity: 1; transform: translateY(0); }
 }
 
-/* per-plate timings — chronological order Day 1 → Day 4 */
-.loadin-plate-1 { animation: loadinDrop    700ms  500ms cubic-bezier(0.55, 0, 0.92, 0.4) forwards; }
-.loadin-plate-2 { animation: loadinDrop    700ms 1100ms cubic-bezier(0.55, 0, 0.92, 0.4) forwards; }
-.loadin-plate-3 { animation: loadinDropBig 850ms 1750ms cubic-bezier(0.6,  0, 0.95, 0.35) forwards; }
-.loadin-plate-4 { animation: loadinDrop    700ms 2700ms cubic-bezier(0.55, 0, 0.92, 0.4) forwards; }
+/* per-plate timings — chronological Day 1 → Day 4. All four use the
+   same heavy drop (was bigger only on the current plate); now every
+   landing feels equally weighty. */
+.loadin-plate-1 { animation: loadinDropBig 850ms  500ms cubic-bezier(0.6, 0, 0.95, 0.35) forwards; }
+.loadin-plate-2 { animation: loadinDropBig 850ms 1100ms cubic-bezier(0.6, 0, 0.95, 0.35) forwards; }
+.loadin-plate-3 { animation: loadinDropBig 850ms 1700ms cubic-bezier(0.6, 0, 0.95, 0.35) forwards; }
+.loadin-plate-4 { animation: loadinDropBig 850ms 2300ms cubic-bezier(0.6, 0, 0.95, 0.35) forwards; }
 
-/* For when current isn't Day 3 — fall back to a generic "current" treatment.
-   Future versions can drive timings entirely from inline style for arbitrary N. */
+/* Generic fallback for non-4-day programs. */
 .loadin-plate-current {
-  animation: loadinDropBig 850ms 1750ms cubic-bezier(0.6, 0, 0.95, 0.35) forwards;
+  animation: loadinDropBig 850ms 1700ms cubic-bezier(0.6, 0, 0.95, 0.35) forwards;
 }
