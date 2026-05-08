@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 
 import { requireCoach } from '@/lib/coach-guard';
 import { db, signMediaUrls } from '@/lib/supabase';
+import { PageHeader } from '../../ui';
 import { ResetWorkoutButton } from './reset-workout-button';
 
 const VIDEO_BUCKET = 'workout-videos';
@@ -142,42 +143,58 @@ export default async function SessionDetailPage(props: { params: Params }) {
   );
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
-      <Link href="/coach/sessions" className="text-sm text-muted hover:text-text transition-colors">
-        ← Sessions
-      </Link>
-      <header className="mt-3 mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {client?.name ?? 'Workout'}
-          {day?.label && <span className="text-muted font-normal"> · {day.label}</span>}
-        </h1>
-        <p className="text-xs text-faint mt-1">
-          {format(new Date(workout.started_at), 'EEEE MMM d, h:mma')}
-          {workout.completed_at ? (
-            <span className="ml-2 text-primary-hi">· completed</span>
-          ) : (
-            <span className="ml-2 text-warn">· in progress</span>
-          )}
-          {workout.is_deload && <span className="ml-2 text-accent">· deload</span>}
-          <span className="ml-2">
-            · {totalSets} sets, {totalVideos} video{totalVideos === 1 ? '' : 's'}
+    <main className="flex flex-1 flex-col px-5 sm:px-8 py-7 max-w-3xl w-full mx-auto">
+      <PageHeader
+        back={{ href: '/coach/sessions', label: 'Sessions' }}
+        eyebrow={day?.label ?? 'Workout'}
+        title={client?.name ?? 'Workout'}
+        meta={
+          <span className="font-mono">
+            {format(new Date(workout.started_at), 'EEEE MMM d, h:mma')}
+            <span className="mx-2 text-border-strong">·</span>
+            {workout.completed_at ? (
+              <span className="text-primary-hi">completed</span>
+            ) : (
+              <span className="text-warn">in progress</span>
+            )}
+            {workout.is_deload && (
+              <>
+                <span className="mx-2 text-border-strong">·</span>
+                <span className="text-accent">deload</span>
+              </>
+            )}
+            <span className="mx-2 text-border-strong">·</span>
+            <span className="tabular-nums">{totalSets}</span> sets
+            <span className="mx-2 text-border-strong">·</span>
+            <span className="tabular-nums">{totalVideos}</span> video
+            {totalVideos === 1 ? '' : 's'}
+            {prCount > 0 && (
+              <>
+                <span className="mx-2 text-border-strong">·</span>
+                <span className="text-primary-hi">
+                  <span className="tabular-nums">{prCount}</span> PR
+                  {prCount === 1 ? '' : 's'}
+                </span>
+              </>
+            )}
           </span>
-          {prCount > 0 && (
-            <span className="ml-2 text-primary-hi">
-              · {prCount} PR{prCount === 1 ? '' : 's'}
-            </span>
-          )}
-        </p>
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <Link
-            href={`/coach/clients/${workout.client_id}`}
-            className="text-xs text-primary-hi hover:text-primary"
-          >
-            Open client →
-          </Link>
-          <ResetWorkoutButton workoutId={workout.id} />
-        </div>
-      </header>
+        }
+        trailing={
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/coach/clients/${workout.client_id}`}
+              prefetch={false}
+              className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-muted hover:text-primary-hi transition-colors"
+            >
+              Client
+              <span aria-hidden className="font-display text-base leading-none">
+                →
+              </span>
+            </Link>
+            <ResetWorkoutButton workoutId={workout.id} />
+          </div>
+        }
+      />
 
       {exercises.length === 0 ? (
         <p className="text-sm text-muted">No exercises logged yet.</p>

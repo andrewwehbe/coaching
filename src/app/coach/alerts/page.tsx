@@ -1,7 +1,6 @@
-import Link from 'next/link';
-
 import { requireCoach } from '@/lib/coach-guard';
 import { db } from '@/lib/supabase';
+import { PageHeader, PaginationLink, Pill } from '../ui';
 import { AlertsList } from './alerts-list';
 
 export const dynamic = 'force-dynamic';
@@ -41,54 +40,32 @@ export default async function AlertsPage(props: { searchParams: SearchParams }) 
   });
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
-      <header className="mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight">Alerts</h1>
-      </header>
+    <main className="flex flex-1 flex-col px-5 sm:px-8 py-7 max-w-3xl w-full mx-auto">
+      <PageHeader eyebrow="The wire" title="Alerts" />
 
-      <div className="flex items-center gap-2 mb-5 text-sm">
-        <Link
-          href="/coach/alerts"
-          className={`px-3.5 py-1.5 rounded-full border font-medium transition-colors ${
-            !onlyUnack
-              ? 'border-primary/50 bg-primary/10 text-primary-hi'
-              : 'border-border text-muted hover:text-text hover:border-border-strong'
-          }`}
-        >
+      <div className="flex items-center gap-2 mb-5">
+        <Pill href="/coach/alerts" active={!onlyUnack}>
           All
-        </Link>
-        <Link
-          href="/coach/alerts?unack=1"
-          className={`px-3.5 py-1.5 rounded-full border font-medium transition-colors ${
-            onlyUnack
-              ? 'border-primary/50 bg-primary/10 text-primary-hi'
-              : 'border-border text-muted hover:text-text hover:border-border-strong'
-          }`}
-        >
+        </Pill>
+        <Pill href="/coach/alerts?unack=1" active={onlyUnack}>
           Unacknowledged
-        </Link>
+        </Pill>
       </div>
 
       <AlertsList alerts={normalized} />
 
-      <nav className="mt-7 flex items-center justify-between text-sm">
+      <nav className="mt-7 flex items-center justify-between">
         {offset > 0 ? (
-          <Link
-            href={buildUrl(Math.max(0, offset - PAGE_SIZE), onlyUnack)}
-            className="px-3 py-1.5 rounded-lg border border-border text-muted hover:text-text hover:border-border-strong transition-colors"
-          >
+          <PaginationLink href={buildUrl(Math.max(0, offset - PAGE_SIZE), onlyUnack)}>
             ← Newer
-          </Link>
+          </PaginationLink>
         ) : (
           <span />
         )}
         {alerts && alerts.length === PAGE_SIZE ? (
-          <Link
-            href={buildUrl(offset + PAGE_SIZE, onlyUnack)}
-            className="px-3 py-1.5 rounded-lg border border-border text-muted hover:text-text hover:border-border-strong transition-colors"
-          >
+          <PaginationLink href={buildUrl(offset + PAGE_SIZE, onlyUnack)}>
             Older →
-          </Link>
+          </PaginationLink>
         ) : (
           <span />
         )}
@@ -114,6 +91,7 @@ type AlertRow = {
     | 'missed_workout'
     | 'workout_started'
     | 'workout_completed'
+    | 'workout_stale'
     | 'check_in_due'
     | 'check_in_submitted'
     | 'missed_checkin';

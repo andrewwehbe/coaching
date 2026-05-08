@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 
 import { requireCoach } from '@/lib/coach-guard';
 import { db } from '@/lib/supabase';
+import { PageHeader, PaginationLink, Pill } from '../../ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,62 +63,58 @@ export default async function AllHistoryPage({
   const weeks = [...byWeek.entries()].sort(([a], [b]) => (a < b ? 1 : -1));
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
-      <Link href="/coach/sessions" className="text-sm text-muted hover:text-text transition-colors">
-        ← This week
-      </Link>
-      <h1 className="mt-3 mb-5 text-2xl font-semibold tracking-tight">All history</h1>
+    <main className="flex flex-1 flex-col px-5 sm:px-8 py-7 max-w-5xl w-full mx-auto">
+      <PageHeader
+        back={{ href: '/coach/sessions', label: 'This week' }}
+        eyebrow="Archive"
+        title="All history"
+      />
 
-      <div className="mb-5 flex flex-wrap gap-1.5 text-sm">
-        <Link
-          href="/coach/sessions/all"
-          className={`px-3 py-1.5 rounded-full border font-medium transition-colors ${
-            !clientFilter
-              ? 'border-primary/50 bg-primary/10 text-primary-hi'
-              : 'border-border text-muted hover:text-text hover:border-border-strong'
-          }`}
-        >
+      <div className="mb-6 flex flex-wrap gap-1.5">
+        <Pill href="/coach/sessions/all" active={!clientFilter}>
           Everyone
-        </Link>
+        </Pill>
         {(clients ?? []).map((c) => (
-          <Link
+          <Pill
             key={c.id}
             href={`/coach/sessions/all?client=${c.id}`}
-            className={`px-3 py-1.5 rounded-full border font-medium transition-colors ${
-              clientFilter === c.id
-                ? 'border-primary/50 bg-primary/10 text-primary-hi'
-                : 'border-border text-muted hover:text-text hover:border-border-strong'
-            }`}
+            active={clientFilter === c.id}
           >
             {c.name}
-          </Link>
+          </Pill>
         ))}
       </div>
 
       {weeks.length === 0 ? (
-        <p className="text-sm text-muted">No completed sessions on record.</p>
+        <div className="border-t border-border pt-10 text-center">
+          <p className="font-display text-2xl text-muted">No completed sessions on record.</p>
+        </div>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-7">
           {weeks.map(([week, ws]) => (
             <div key={week}>
-              <p className="text-xs uppercase tracking-[0.18em] text-faint mb-2">
+              <p className="text-[10px] uppercase tracking-[0.22em] text-faint mb-2 font-mono">
                 Week of {format(new Date(week), 'MMM d, yyyy')}
               </p>
-              <ul className="space-y-1.5">
+              <ul className="border-t border-border">
                 {ws.map((r) => (
-                  <li key={r.id}>
+                  <li key={r.id} className="border-b border-border">
                     <Link
                       href={`/coach/sessions/${r.id}`}
                       prefetch={false}
-                      className="flex items-baseline justify-between gap-3 px-4 py-2.5 rounded-xl border border-border bg-surface/60 hover:bg-surface hover:border-primary/40 transition-colors"
+                      className="group flex items-baseline justify-between gap-3 px-2 py-3 hover:bg-surface/40 transition-colors"
                     >
-                      <span className="text-sm">
-                        <strong className="font-medium">{r.client_name}</strong>
+                      <span className="min-w-0 truncate">
+                        <span className="font-display text-lg sm:text-xl tracking-tight group-hover:text-primary-hi transition-colors">
+                          {r.client_name}
+                        </span>
                         {r.day_label && (
-                          <span className="text-muted font-normal"> · {r.day_label}</span>
+                          <span className="text-faint font-normal text-sm ml-2">
+                            · {r.day_label}
+                          </span>
                         )}
                       </span>
-                      <span className="text-xs text-faint shrink-0">
+                      <span className="text-[10px] uppercase tracking-[0.16em] text-faint shrink-0 font-mono">
                         {format(new Date(r.completed_at!), 'EEE MMM d, h:mma')}
                       </span>
                     </Link>
@@ -131,21 +128,23 @@ export default async function AllHistoryPage({
 
       <div className="mt-8 flex items-center justify-between">
         {page > 0 ? (
-          <Link
+          <PaginationLink
             href={`/coach/sessions/all?page=${page - 1}${clientFilter ? `&client=${clientFilter}` : ''}`}
-            className="px-3 py-1.5 rounded-lg border border-border text-sm text-muted hover:text-text hover:border-border-strong transition-colors"
           >
             ← Newer
-          </Link>
-        ) : <span />}
+          </PaginationLink>
+        ) : (
+          <span />
+        )}
         {hasMore ? (
-          <Link
+          <PaginationLink
             href={`/coach/sessions/all?page=${page + 1}${clientFilter ? `&client=${clientFilter}` : ''}`}
-            className="px-3 py-1.5 rounded-lg border border-border text-sm text-muted hover:text-text hover:border-border-strong transition-colors"
           >
             Older →
-          </Link>
-        ) : <span />}
+          </PaginationLink>
+        ) : (
+          <span />
+        )}
       </div>
     </main>
   );

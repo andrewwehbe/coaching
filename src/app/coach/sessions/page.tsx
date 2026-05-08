@@ -3,6 +3,7 @@ import { format, startOfWeek, formatISO } from 'date-fns';
 
 import { requireCoach } from '@/lib/coach-guard';
 import { db } from '@/lib/supabase';
+import { PageHeader, Pill } from '../ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,8 +34,6 @@ export default async function SessionsPage({
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekStartIso = formatISO(weekStart, { representation: 'date' });
 
-  // One nested query gets workouts + logs + sets in a single round-trip
-  // (was 3 sequential queries).
   const { data: workouts } = await supa
     .from('workouts')
     .select(
@@ -50,11 +49,12 @@ export default async function SessionsPage({
     const day = (Array.isArray(days) ? days[0] : days) as { label?: string } | null;
     const cs = w.clients as unknown;
     const c = (Array.isArray(cs) ? cs[0] : cs) as { name?: string } | null;
-    const logs = (w.exercise_logs as Array<{
-      id: string;
-      pain_reason: string | null;
-      sets: Array<{ video_url: string | null }> | null;
-    }>) ?? [];
+    const logs =
+      (w.exercise_logs as Array<{
+        id: string;
+        pain_reason: string | null;
+        sets: Array<{ video_url: string | null }> | null;
+      }>) ?? [];
     let setCount = 0;
     let videoCount = 0;
     let painCount = 0;
@@ -81,67 +81,61 @@ export default async function SessionsPage({
   const filtered = mode === 'with_video' ? rows.filter((r) => r.video_count > 0) : rows;
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
-      <header className="mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight">Sessions this week</h1>
-        <p className="text-xs text-faint mt-1">Week of {format(weekStart, 'MMM d, yyyy')}</p>
-      </header>
+    <main className="flex flex-1 flex-col px-5 sm:px-8 py-7 max-w-5xl w-full mx-auto">
+      <PageHeader
+        eyebrow="This week"
+        title="Sessions"
+        meta={<span>Week of {format(weekStart, 'MMM d, yyyy')}</span>}
+      />
 
-      <div className="flex gap-2 mb-5 text-sm">
-        <Link
-          href="/coach/sessions"
-          className={`px-3.5 py-1.5 rounded-full border font-medium transition-colors ${
-            mode === 'recent'
-              ? 'border-primary/50 bg-primary/10 text-primary-hi'
-              : 'border-border text-muted hover:text-text hover:border-border-strong'
-          }`}
-        >
+      <div className="flex gap-2 mb-5 flex-wrap">
+        <Pill href="/coach/sessions" active={mode === 'recent'}>
           All ({rows.length})
-        </Link>
-        <Link
-          href="/coach/sessions?sort=with_video"
-          className={`px-3.5 py-1.5 rounded-full border font-medium transition-colors ${
-            mode === 'with_video'
-              ? 'border-primary/50 bg-primary/10 text-primary-hi'
-              : 'border-border text-muted hover:text-text hover:border-border-strong'
-          }`}
-        >
+        </Pill>
+        <Pill href="/coach/sessions?sort=with_video" active={mode === 'with_video'}>
           With video ({rows.filter((r) => r.video_count > 0).length})
-        </Link>
+        </Pill>
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-muted">No completed sessions yet this week.</p>
+        <div className="border-t border-border pt-10 text-center">
+          <p className="font-display text-2xl text-muted">
+            No completed sessions yet this week.
+          </p>
+        </div>
       ) : (
-        <ul className="space-y-2">
+        <ul className="border-t border-border">
           {filtered.map((r) => (
-            <li key={r.id}>
+            <li key={r.id} className="border-b border-border">
               <Link
                 href={`/coach/sessions/${r.id}`}
                 prefetch={false}
-                className="block rounded-2xl border border-border bg-surface/60 hover:bg-surface hover:border-primary/40 transition-colors p-4"
+                className="group flex items-baseline justify-between gap-4 px-2 py-4 hover:bg-surface/40 transition-colors"
               >
-                <div className="flex items-baseline justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">
-                      {r.client_name}
-                      {r.day_label && (
-                        <span className="text-muted font-normal"> · {r.day_label}</span>
-                      )}
-                    </p>
-                    <p className="text-xs text-faint mt-0.5">
-                      {format(new Date(r.completed_at ?? r.started_at), 'EEE MMM d, h:mma')}
-                      {r.pain_count > 0 && (
-                        <span className="ml-2 text-warn">· {r.pain_count} pain</span>
-                      )}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-muted shrink-0">
-                    <span className="tabular-nums">{r.set_count} sets</span>
-                    {r.video_count > 0 && (
-                      <span className="tabular-nums text-primary-hi">▶ {r.video_count}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-display text-xl sm:text-2xl tracking-tight leading-none truncate group-hover:text-primary-hi transition-colors">
+                    {r.client_name}
+                    {r.day_label && (
+                      <span className="text-faint font-normal text-base sm:text-lg ml-2">
+                        · {r.day_label}
+                      </span>
                     )}
-                  </div>
+                  </p>
+                  <p className="mt-1.5 text-[10px] sm:text-[11px] uppercase tracking-[0.18em] text-faint">
+                    {format(new Date(r.completed_at ?? r.started_at), 'EEE MMM d, h:mma')}
+                    {r.pain_count > 0 && (
+                      <>
+                        <span className="mx-2 text-border-strong">·</span>
+                        <span className="text-warn">{r.pain_count} pain</span>
+                      </>
+                    )}
+                  </p>
+                </div>
+                <div className="flex items-baseline gap-4 shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
+                  <span className="tabular-nums">{r.set_count} sets</span>
+                  {r.video_count > 0 && (
+                    <span className="tabular-nums text-primary-hi">▶ {r.video_count}</span>
+                  )}
                 </div>
               </Link>
             </li>
@@ -152,9 +146,13 @@ export default async function SessionsPage({
       <div className="mt-8 flex justify-center">
         <Link
           href="/coach/sessions/all"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-hi hover:text-primary px-5 py-2.5 rounded-xl border border-border bg-surface/40 hover:bg-surface hover:border-primary/40 transition-colors"
+          prefetch={false}
+          className="inline-flex items-center gap-2 rounded-sm border border-border-strong hover:border-primary px-4 py-2 text-[10px] sm:text-[11px] uppercase tracking-[0.22em] font-medium text-muted hover:text-text transition-colors"
         >
-          All history <span aria-hidden>→</span>
+          All history
+          <span aria-hidden className="font-display text-base leading-none">
+            →
+          </span>
         </Link>
       </div>
     </main>

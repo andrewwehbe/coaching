@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 
 import { requireCoach } from '@/lib/coach-guard';
 import { buildWeeklyReport } from '@/lib/weekly-report';
+import { PageHeader } from '../ui';
 import { SuggestionRow } from './suggestion-actions';
 
 export const dynamic = 'force-dynamic';
@@ -12,15 +13,14 @@ export default async function WeeklyReportPage() {
   const report = await buildWeeklyReport();
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
-      <header className="mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight">Weekly report</h1>
-        <p className="text-xs text-faint mt-1">
-          Week of {format(new Date(report.weekStart), 'MMM d, yyyy')}
-        </p>
-      </header>
+    <main className="flex flex-1 flex-col px-5 sm:px-8 py-7 max-w-3xl w-full mx-auto">
+      <PageHeader
+        eyebrow="The wrap"
+        title="Weekly report"
+        meta={<span>Week of {format(new Date(report.weekStart), 'MMM d, yyyy')}</span>}
+      />
 
-      <section className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <section className="mb-7 grid grid-cols-2 sm:grid-cols-4 border-y border-border divide-x divide-border">
         <Stat label="Completion" value={`${report.totals.completionPct}%`} />
         <Stat label="Sets" value={String(report.totals.totalSets)} />
         <Stat label="Videos" value={String(report.totals.totalVideos)} />
@@ -135,9 +135,11 @@ export default async function WeeklyReportPage() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-border bg-surface/60 px-3.5 py-3">
-      <p className="text-[10px] uppercase tracking-[0.18em] text-faint">{label}</p>
-      <p className="mt-0.5 text-xl font-semibold tabular-nums">{value}</p>
+    <div className="px-4 py-3.5">
+      <p className="text-[10px] uppercase tracking-[0.22em] text-faint">{label}</p>
+      <p className="mt-1 font-display text-3xl tabular-nums leading-none tracking-tight">
+        {value}
+      </p>
     </div>
   );
 }

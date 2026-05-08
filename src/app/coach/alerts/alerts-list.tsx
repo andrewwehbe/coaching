@@ -14,6 +14,7 @@ type Alert = {
     | 'missed_workout'
     | 'workout_started'
     | 'workout_completed'
+    | 'workout_stale'
     | 'check_in_due'
     | 'check_in_submitted'
     | 'missed_checkin';
@@ -32,6 +33,7 @@ const TYPE_CHIPS: Record<Alert['type'], { label: string; className: string }> = 
     label: 'Completed',
     className: 'bg-primary/15 text-primary-hi border-primary/30',
   },
+  workout_stale: { label: 'Stale', className: 'bg-warn/10 text-warn border-warn/35' },
   check_in_due: { label: 'Check-in due', className: 'bg-surface-2 text-muted border-border' },
   check_in_submitted: {
     label: 'Check-in',
@@ -47,8 +49,8 @@ export function AlertsList({ alerts }: { alerts: Alert[] }) {
 
   if (alerts.length === 0) {
     return (
-      <p className="rounded-2xl border border-border bg-surface/40 px-4 py-3 text-sm text-muted">
-        No alerts.
+      <p className="border-t border-border pt-10 text-center font-display text-2xl text-muted">
+        Quiet on the wire.
       </p>
     );
   }
@@ -88,42 +90,43 @@ export function AlertsList({ alerts }: { alerts: Alert[] }) {
             type="button"
             disabled={busy !== null || pending}
             onClick={ackVisible}
-            className="text-xs font-medium px-3 py-1.5 rounded-lg border border-border text-muted hover:text-text hover:border-border-strong hover:bg-surface/60 transition-colors disabled:opacity-50"
+            className="text-[10px] uppercase tracking-[0.18em] font-medium px-3 py-1.5 rounded-sm border border-border-strong text-muted hover:text-text hover:border-primary/50 transition-colors disabled:opacity-50"
           >
             Ack {unack.length} on this page
           </button>
         </div>
       )}
-      <ul className="space-y-2">
+      <ul className="border-t border-border">
         {alerts.map((a) => {
           const chip = TYPE_CHIPS[a.type];
           const acked = !!a.acknowledged_at;
           return (
             <li
               key={a.id}
-              className={`rounded-2xl px-4 py-3 border flex items-center justify-between gap-3 transition-colors ${
+              className={`border-b border-border flex items-center justify-between gap-3 py-3.5 px-2 transition-colors ${
                 acked
-                  ? 'border-border bg-surface/30 opacity-55'
+                  ? 'opacity-50'
                   : a.type === 'pain'
-                    ? 'border-danger/40 bg-danger/8'
-                    : 'border-border bg-surface/60'
+                    ? 'bg-danger/[0.04] border-l-2 border-l-danger'
+                    : ''
               }`}
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <span
-                    className={`text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded-full border ${chip.className}`}
+                    className={`text-[10px] uppercase tracking-[0.16em] font-medium px-2 py-0.5 rounded-sm border ${chip.className}`}
                   >
                     {chip.label}
                   </span>
                   <Link
                     href={`/coach/clients/${a.client_id}`}
+                    prefetch={false}
                     className="text-xs text-text hover:text-primary-hi transition-colors"
                   >
                     {a.clients?.name ?? 'Unknown'}
                   </Link>
-                  <span className="text-xs text-faint">
-                    · {formatDistanceToNow(new Date(a.created_at), { addSuffix: true })}
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-faint font-mono">
+                    {formatDistanceToNow(new Date(a.created_at), { addSuffix: true })}
                   </span>
                 </div>
                 <p className="text-sm text-text">{a.message}</p>
@@ -133,12 +136,14 @@ export function AlertsList({ alerts }: { alerts: Alert[] }) {
                   type="button"
                   disabled={busy === a.id || pending}
                   onClick={() => ack(a.id)}
-                  className="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border border-border text-muted hover:text-text hover:border-primary/40 hover:bg-primary/10 transition-colors disabled:opacity-50"
+                  className="shrink-0 text-[10px] uppercase tracking-[0.18em] font-medium px-3 py-1.5 rounded-sm border border-border-strong text-muted hover:text-text hover:border-primary/50 hover:bg-primary/10 transition-colors disabled:opacity-50"
                 >
                   Ack
                 </button>
               ) : (
-                <span className="shrink-0 text-xs text-faint">acked</span>
+                <span className="shrink-0 text-[10px] uppercase tracking-[0.18em] text-faint">
+                  Acked
+                </span>
               )}
             </li>
           );

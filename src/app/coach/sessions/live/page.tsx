@@ -3,6 +3,7 @@ import { formatDistanceToNow } from 'date-fns';
 
 import { requireCoach } from '@/lib/coach-guard';
 import { db } from '@/lib/supabase';
+import { PageHeader } from '../../ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +44,10 @@ export default async function LiveSessionsPage() {
         id: string;
         exercise_id: string;
         created_at: string;
-        exercises: { name?: string; position?: number } | { name?: string; position?: number }[] | null;
+        exercises:
+          | { name?: string; position?: number }
+          | { name?: string; position?: number }[]
+          | null;
         sets: { id: string }[] | null;
       }>) ?? [];
 
@@ -72,47 +76,73 @@ export default async function LiveSessionsPage() {
   });
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
-      <header className="mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight">Current sessions</h1>
-        <p className="text-xs text-faint mt-1">
-          {rows.length === 0 ? 'No one training right now.' : `${rows.length} in progress · last 6h`}
-        </p>
-      </header>
+    <main className="flex flex-1 flex-col px-5 sm:px-8 py-7 max-w-5xl w-full mx-auto">
+      <PageHeader
+        back={{ href: '/coach', label: 'Home' }}
+        eyebrow="Live"
+        title="Now training"
+        meta={
+          <span>
+            {rows.length === 0
+              ? 'No one on the floor right now.'
+              : `${rows.length} in progress · last 6h`}
+          </span>
+        }
+      />
 
       {rows.length === 0 ? (
-        <p className="text-sm text-muted">When a client starts a workout, they&rsquo;ll show up here.</p>
+        <div className="border-t border-border pt-10 text-center">
+          <p className="font-display text-2xl text-muted">
+            When a client starts a workout, they show up here.
+          </p>
+        </div>
       ) : (
-        <ul className="space-y-2">
+        <ul className="border-t border-border">
           {rows.map((r) => (
-            <li key={r.id}>
+            <li key={r.id} className="border-b border-border">
               <Link
                 href={`/coach/sessions/${r.id}`}
-                className="block rounded-2xl border border-border bg-surface/60 hover:bg-surface hover:border-primary/40 transition-colors p-4"
+                prefetch={false}
+                className="group flex items-baseline justify-between gap-4 px-2 py-4 hover:bg-surface/40 transition-colors"
               >
-                <div className="flex items-baseline justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">
-                      {r.clientName}
-                      {r.dayLabel && (
-                        <span className="text-muted font-normal"> · {r.dayLabel}</span>
-                      )}
-                    </p>
-                    <p className="text-xs text-faint mt-0.5">
-                      {r.currentExerciseName ? (
-                        <>
-                          On <span className="text-primary-hi">{r.currentExerciseName}</span>
-                        </>
-                      ) : (
-                        <span>Starting up</span>
-                      )}
-                      <span> · started {formatDistanceToNow(new Date(r.startedAt), { addSuffix: true })}</span>
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-muted shrink-0 tabular-nums">
-                    <span>{r.exercisesTouched} ex</span>
-                    <span>{r.setsDone} sets</span>
-                  </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-display text-2xl sm:text-3xl tracking-tight leading-none truncate group-hover:text-primary-hi transition-colors">
+                    {r.clientName}
+                    {r.dayLabel && (
+                      <span className="text-faint font-normal text-lg sm:text-xl ml-2">
+                        · {r.dayLabel}
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-1.5 text-[10px] sm:text-[11px] uppercase tracking-[0.18em] text-faint">
+                    {r.currentExerciseName ? (
+                      <>
+                        On{' '}
+                        <span className="text-primary-hi normal-case tracking-normal text-xs">
+                          {r.currentExerciseName}
+                        </span>
+                      </>
+                    ) : (
+                      'Starting up'
+                    )}
+                    <span className="mx-2 text-border-strong">·</span>
+                    started{' '}
+                    {formatDistanceToNow(new Date(r.startedAt), { addSuffix: true })}
+                  </p>
+                </div>
+                <div className="flex items-baseline gap-4 shrink-0 font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
+                  <span>
+                    <span className="font-display text-base text-text tabular-nums">
+                      {r.exercisesTouched}
+                    </span>{' '}
+                    ex
+                  </span>
+                  <span>
+                    <span className="font-display text-base text-text tabular-nums">
+                      {r.setsDone}
+                    </span>{' '}
+                    sets
+                  </span>
                 </div>
               </Link>
             </li>

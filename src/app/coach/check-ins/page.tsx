@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 
 import { requireCoach } from '@/lib/coach-guard';
 import { db, signMediaUrls } from '@/lib/supabase';
+import { PageHeader, Pill } from '../ui';
 
 const PHOTO_BUCKET = 'check-in-photos';
 
@@ -45,7 +46,6 @@ export default async function CheckInsPage({
     if (signed[i]) signedByPath.set(p, signed[i]!);
   });
 
-  // Latest body weight per client (for the strip at the top).
   const latestByClient = new Map<string, { weight: number; unit: string; date: string }>();
   for (const r of rows ?? []) {
     if (r.body_weight == null) continue;
@@ -59,62 +59,57 @@ export default async function CheckInsPage({
   }
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
-      <h1 className="text-2xl font-semibold tracking-tight">Check-ins</h1>
+    <main className="flex flex-1 flex-col px-5 sm:px-8 py-7 max-w-3xl w-full mx-auto">
+      <PageHeader eyebrow="Field notes" title="Check-ins" />
 
-      <div className="mt-5 mb-5 flex flex-wrap gap-1.5 text-sm">
-        <Link
-          href="/coach/check-ins"
-          className={`px-3 py-1.5 rounded-full border font-medium transition-colors ${
-            !clientFilter
-              ? 'border-primary/50 bg-primary/10 text-primary-hi'
-              : 'border-border text-muted hover:text-text hover:border-border-strong'
-          }`}
-        >
+      <div className="mb-6 flex flex-wrap gap-1.5">
+        <Pill href="/coach/check-ins" active={!clientFilter}>
           Everyone
-        </Link>
+        </Pill>
         {(clients ?? []).map((c) => {
           const latest = latestByClient.get(c.id);
           return (
-            <Link
+            <Pill
               key={c.id}
               href={`/coach/check-ins?client=${c.id}`}
-              prefetch={false}
-              className={`px-3 py-1.5 rounded-full border font-medium transition-colors ${
-                clientFilter === c.id
-                  ? 'border-primary/50 bg-primary/10 text-primary-hi'
-                  : 'border-border text-muted hover:text-text hover:border-border-strong'
-              }`}
+              active={clientFilter === c.id}
             >
               {c.name}
               {latest && (
-                <span className="ml-1.5 text-faint tabular-nums">
-                  {latest.weight}{(latest.unit ?? 'kg').toUpperCase()}
+                <span className="ml-1.5 text-faint tabular-nums normal-case tracking-normal text-[10px]">
+                  {latest.weight}
+                  {(latest.unit ?? 'kg').toUpperCase()}
                 </span>
               )}
-            </Link>
+            </Pill>
           );
         })}
       </div>
 
       {(rows ?? []).length === 0 ? (
-        <p className="text-sm text-muted">No check-ins yet{clientFilter ? ' for this client' : ''}.</p>
+        <div className="border-t border-border pt-10 text-center">
+          <p className="font-display text-2xl text-muted">
+            No check-ins yet{clientFilter ? ' for this client' : ''}.
+          </p>
+        </div>
       ) : (
-        <ul className="space-y-2">
+        <ul className="border-t border-border">
           {(rows ?? []).map((r) => {
             const cs = r.clients as unknown;
             const c = (Array.isArray(cs) ? cs[0] : cs) as { name?: string } | null;
             const photos = (r.check_in_photos as Array<{ id: string; label: string; storage_url: string }>) ?? [];
             return (
-              <li key={r.id} className="rounded-2xl border border-border bg-surface/60 px-4 py-3">
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-sm font-medium text-text">
-                    {c?.name ?? '(unknown)'}
-                    <span className="text-faint font-normal ml-2">
+              <li key={r.id} className="border-b border-border py-4 px-2">
+                <div className="flex items-baseline justify-between mb-1.5 gap-3">
+                  <p className="min-w-0">
+                    <span className="font-display text-xl tracking-tight">
+                      {c?.name ?? '(unknown)'}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-[0.16em] text-faint ml-3 font-mono">
                       {format(new Date(r.date + 'T00:00:00'), 'EEE, MMM d')}
                     </span>
                   </p>
-                  <p className="text-sm tabular-nums text-muted">
+                  <p className="font-mono text-sm tabular-nums text-muted shrink-0">
                     {r.body_weight != null
                       ? `${r.body_weight}${(r.body_weight_unit ?? 'kg').toUpperCase()}`
                       : '—'}
@@ -122,7 +117,7 @@ export default async function CheckInsPage({
                 </div>
                 {r.notes && <p className="text-xs text-muted mb-2">{r.notes}</p>}
                 {photos.length > 0 && (
-                  <div className="flex gap-2 overflow-x-auto -mx-1 px-1">
+                  <div className="flex gap-2 overflow-x-auto -mx-1 px-1 no-scrollbar">
                     {photos.map((p) => {
                       const url = signedByPath.get(p.storage_url) ?? null;
                       if (!url) return null;
@@ -132,7 +127,7 @@ export default async function CheckInsPage({
                           href={url}
                           target="_blank"
                           rel="noreferrer"
-                          className="block shrink-0 rounded-lg overflow-hidden border border-border"
+                          className="block shrink-0 rounded-sm overflow-hidden border border-border hover:border-primary/40 transition-colors"
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img

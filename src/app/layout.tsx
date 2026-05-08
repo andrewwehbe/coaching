@@ -32,9 +32,9 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // Slight green shift so the iOS status bar / Safari URL bar feels of-a-piece
-  // with the page's primary-green ambient gradient instead of a flat black band.
-  themeColor: '#091410',
+  // Match --bg exactly so the iOS home-indicator / Android nav bar blends
+  // into the page rather than showing as a contrasting band.
+  themeColor: '#06090a',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,

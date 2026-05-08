@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { requireCoach } from '@/lib/coach-guard';
 import { listClientSummaries } from '@/lib/clients';
+import { PageHeader } from '../../ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,48 +28,68 @@ export default async function RemainingSessionsPage() {
   const totalLeft = remaining.reduce((sum, c) => sum + c.sessionsLeft, 0);
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
-      <header className="mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight">Sessions left this week</h1>
-        <p className="text-xs text-faint mt-1">
-          {totalLeft} session{totalLeft === 1 ? '' : 's'} owed across {remaining.length} client
-          {remaining.length === 1 ? '' : 's'} · {daysLeftInWeek} day
-          {daysLeftInWeek === 1 ? '' : 's'} left in week
-        </p>
-      </header>
+    <main className="flex flex-1 flex-col px-5 sm:px-8 py-7 max-w-5xl w-full mx-auto">
+      <PageHeader
+        back={{ href: '/coach', label: 'Home' }}
+        eyebrow="The list"
+        title="Sessions left"
+        meta={
+          <span>
+            <span className="font-mono tabular-nums text-muted">{totalLeft}</span>{' '}
+            session{totalLeft === 1 ? '' : 's'} owed across{' '}
+            <span className="font-mono tabular-nums text-muted">{remaining.length}</span>{' '}
+            client{remaining.length === 1 ? '' : 's'}
+            <span className="mx-2 text-border-strong">·</span>
+            <span className="font-mono tabular-nums text-muted">{daysLeftInWeek}</span> day
+            {daysLeftInWeek === 1 ? '' : 's'} left in week
+          </span>
+        }
+      />
 
       {remaining.length === 0 ? (
-        <p className="text-sm text-muted">Everyone&rsquo;s hit their target for the week.</p>
+        <div className="border-t border-border pt-10 text-center">
+          <p className="font-display text-3xl text-primary-hi">
+            Everyone&rsquo;s hit target.
+          </p>
+          <p className="mt-2 text-[11px] uppercase tracking-[0.22em] text-faint">
+            See you Monday.
+          </p>
+        </div>
       ) : (
-        <ul className="space-y-2">
+        <ul className="border-t border-border">
           {remaining.map((c) => {
             const atRisk = c.sessionsLeft > daysLeftInWeek;
             return (
-              <li key={c.id}>
+              <li key={c.id} className="border-b border-border">
                 <Link
                   href={`/coach/clients/${c.id}`}
-                  className="block rounded-2xl px-4 py-3.5 border border-border bg-surface/60 hover:border-primary/40 hover:bg-surface transition-all"
+                  prefetch={false}
+                  className="group flex items-baseline justify-between gap-4 px-2 py-4 hover:bg-surface/40 transition-colors"
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-medium text-text truncate">{c.name}</p>
-                      <p className="text-xs text-faint mt-0.5">
-                        {c.daysLoggedThisWeek}/{c.target} done
-                        {atRisk && (
-                          <span className="ml-2 text-danger">
-                            can&rsquo;t hit target
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <span
-                      className={`font-semibold tabular-nums text-sm ${
-                        atRisk ? 'text-danger' : 'text-warn'
-                      }`}
-                    >
-                      {c.sessionsLeft} left
-                    </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-display text-2xl sm:text-3xl tracking-tight leading-none truncate group-hover:text-primary-hi transition-colors">
+                      {c.name}
+                    </p>
+                    <p className="mt-1.5 text-[10px] sm:text-[11px] uppercase tracking-[0.18em] text-faint">
+                      <span className="tabular-nums text-muted">
+                        {c.daysLoggedThisWeek}/{c.target}
+                      </span>{' '}
+                      done
+                      {atRisk && (
+                        <>
+                          <span className="mx-2 text-border-strong">·</span>
+                          <span className="text-danger">can&rsquo;t hit target</span>
+                        </>
+                      )}
+                    </p>
                   </div>
+                  <span
+                    className={`shrink-0 font-display text-3xl sm:text-4xl tabular-nums leading-none tracking-tight ${
+                      atRisk ? 'text-danger' : 'text-warn'
+                    }`}
+                  >
+                    {c.sessionsLeft}
+                  </span>
                 </Link>
               </li>
             );

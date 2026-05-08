@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 
 import { readSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
+import { PageHeader } from '../ui';
 
 import { SwapInbox } from './swap-inbox';
 
@@ -105,18 +106,17 @@ export default async function SwapsPage() {
   });
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-7 max-w-2xl w-full mx-auto">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Swap proposals</h1>
-        <p className="text-sm text-muted mt-1">
-          Exercises stalled long enough to warrant replacement.
-        </p>
-      </header>
+    <main className="flex flex-1 flex-col px-5 sm:px-8 py-7 max-w-2xl w-full mx-auto">
+      <PageHeader
+        eyebrow="The bench"
+        title="Swap proposals"
+        meta={<span>Exercises stalled long enough to warrant replacement.</span>}
+      />
 
       {enriched.length === 0 ? (
-        <p className="text-sm text-muted text-center py-12">
-          No pending swap proposals.
-        </p>
+        <div className="border-t border-border pt-10 text-center">
+          <p className="font-display text-2xl text-muted">No pending swap proposals.</p>
+        </div>
       ) : (
         <SwapInbox proposals={enriched} />
       )}

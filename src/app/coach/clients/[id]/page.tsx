@@ -4,6 +4,7 @@ import { format, formatDistanceToNow, startOfWeek, formatISO } from 'date-fns';
 
 import { requireCoach } from '@/lib/coach-guard';
 import { db, signMediaUrls } from '@/lib/supabase';
+import { Chip, PageHeader } from '../../ui';
 
 const PHOTO_BUCKET = 'check-in-photos';
 import { ClientActions } from './client-actions';
@@ -87,56 +88,49 @@ export default async function ClientDetailPage(props: { params: Params }) {
   photoPaths.forEach((p, i) => signedByPath.set(p, signed[i]));
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
-      <Link
-        href="/coach"
-        className="inline-flex items-center text-sm text-muted hover:text-text transition-colors"
-      >
-        ← All clients
-      </Link>
-      <header className="mt-3 mb-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight truncate">{client.name}</h1>
-            <p className="text-xs text-faint mt-1">
-              Joined {format(new Date(client.created_at), 'MMM d, yyyy')} ·{' '}
-              {client.active ? 'active' : 'deactivated'}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted px-2.5 py-1 rounded-full border border-border">
-              {client.weekly_day_target}d/week
-            </span>
-            {client.photo_check_in_enabled && (
-              <span className="text-xs text-muted px-2.5 py-1 rounded-full border border-border">
-                photos
+    <main className="flex flex-1 flex-col px-5 sm:px-8 py-7 max-w-3xl w-full mx-auto">
+      <PageHeader
+        back={{ href: '/coach/clients', label: 'All clients' }}
+        eyebrow={`Joined ${format(new Date(client.created_at), 'MMM d, yyyy')} · ${
+          client.active ? 'Active' : 'Deactivated'
+        }`}
+        title={client.name}
+        meta={
+          <div className="flex items-center gap-2 flex-wrap pt-1">
+            <Chip className="border-border bg-surface/40 text-muted">
+              <span className="font-mono tabular-nums normal-case tracking-normal">
+                {client.weekly_day_target}
               </span>
+              <span className="ml-1">d/week</span>
+            </Chip>
+            {client.photo_check_in_enabled && (
+              <Chip className="border-border bg-surface/40 text-muted">Photos</Chip>
             )}
             {client.body_weight_freq !== 'none' && (
-              <span className="text-xs text-muted px-2.5 py-1 rounded-full border border-border">
+              <Chip className="border-border bg-surface/40 text-muted">
                 BW: {client.body_weight_freq}
-              </span>
+              </Chip>
             )}
             {client.meal_plan_enabled && (
-              <span className="text-xs text-muted px-2.5 py-1 rounded-full border border-border">
-                meals
-              </span>
+              <Chip className="border-border bg-surface/40 text-muted">Meals</Chip>
             )}
           </div>
-        </div>
-      </header>
+        }
+      />
 
       <div className="flex flex-wrap gap-2 mb-6">
         <Link
           href={`/coach/clients/${client.id}/log`}
-          className="rounded-xl bg-primary hover:bg-primary-hi text-bg px-4 py-2.5 text-sm font-semibold transition-colors shadow-[0_8px_24px_-10px_rgba(34,197,94,0.6)]"
+          prefetch={false}
+          className="inline-flex items-center gap-2 rounded-sm border border-primary bg-primary/15 hover:bg-primary/25 text-primary-hi px-4 py-2 text-[10px] sm:text-[11px] uppercase tracking-[0.22em] font-medium transition-colors"
         >
           Log on behalf
         </Link>
         {program && (
           <Link
             href={`/coach/clients/${client.id}/program/edit`}
-            className="rounded-xl border border-border bg-surface/60 hover:bg-surface hover:border-border-strong px-4 py-2.5 text-sm font-medium transition-colors"
+            prefetch={false}
+            className="inline-flex items-center gap-2 rounded-sm border border-border-strong hover:border-primary/50 bg-surface/40 hover:bg-surface text-muted hover:text-text px-4 py-2 text-[10px] sm:text-[11px] uppercase tracking-[0.22em] font-medium transition-colors"
           >
             Edit program
           </Link>

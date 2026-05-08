@@ -169,14 +169,8 @@ function Quadrant(props: {
         {props.hero}
       </p>
 
-      <span className="self-start inline-flex items-center gap-2 text-[10px] sm:text-[11px] uppercase tracking-[0.24em] font-medium text-muted group-hover:text-text transition-colors">
-        <span className="relative pb-0.5">
-          View all
-          <span
-            aria-hidden
-            className="absolute left-0 -bottom-px h-px w-0 bg-current group-hover:w-full transition-[width] duration-300"
-          />
-        </span>
+      <span className="self-start inline-flex items-center gap-2 rounded-sm border border-border-strong group-hover:border-primary group-hover:text-text px-3 py-1.5 text-[10px] sm:text-[11px] uppercase tracking-[0.24em] font-medium text-muted transition-colors">
+        View all
         <span
           aria-hidden
           className="font-display text-base leading-none translate-x-0 group-hover:translate-x-1 transition-transform duration-300"
