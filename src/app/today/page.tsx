@@ -13,6 +13,7 @@ const LINKED_CLIENT_ID =
   process.env.COACH_LINKED_CLIENT_ID || '8a06a900-aec4-44fc-8da4-9f90581a74c0';
 import { BeginButton } from './begin-button';
 import { MissedButton } from './missed-button';
+import { LoadInView } from './load-in';
 
 export default async function TodayPage() {
   const user = await readSession();
@@ -34,6 +35,39 @@ export default async function TodayPage() {
     );
   }
 
+  // Andrew gets the barbell load-in experience. Everyone else sees the
+  // standard list view.
+  if (user.id === LINKED_CLIENT_ID) {
+    return (
+      <LoadInView
+        greetingName={user.greetingName}
+        days={schedule.days.map((d) => ({
+          dayId: d.dayId,
+          dayIndex: d.dayIndex,
+          label: d.label,
+          status: d.status,
+          workoutId: d.workoutId ?? null,
+        }))}
+        suggested={
+          schedule.suggested
+            ? {
+                dayId: schedule.suggested.dayId,
+                label: schedule.suggested.label,
+                workoutId: schedule.suggested.workoutId ?? null,
+              }
+            : null
+        }
+        rightControls={
+          <>
+            <NotificationsToggle />
+            <SwitchToCoachButton />
+            <LogoutButton />
+          </>
+        }
+      />
+    );
+  }
+
   return (
     <main className="flex flex-1 flex-col px-5 py-7 max-w-md w-full mx-auto">
       <header className="mb-7 flex items-end justify-between gap-3">
@@ -51,7 +85,6 @@ export default async function TodayPage() {
           >
             Check-in
           </Link>
-          {user.id === LINKED_CLIENT_ID && <SwitchToCoachButton />}
           <LogoutButton />
         </div>
       </header>

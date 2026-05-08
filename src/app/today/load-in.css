@@ -1,0 +1,225 @@
+/* ==============================================================
+   Andrew-only barbell load-in experience for /today.
+   Keyframes + layout for the falling-plate intro.
+   ============================================================== */
+
+.loadin-screen {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  z-index: 0;
+}
+
+/* TOP HEADER — 18% of viewport */
+.loadin-top {
+  flex: 0 0 18%;
+  display: flex;
+  flex-direction: column;
+  padding: max(38px, env(safe-area-inset-top, 38px)) 22px 0;
+}
+.loadin-masthead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  opacity: 0;
+  animation: loadinFade 600ms 80ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.loadin-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: 0;
+}
+.loadin-greeting {
+  font-family: 'Boska', ui-serif, serif;
+  font-weight: 500;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text);
+  margin: 4px 0 0;
+}
+.loadin-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.loadin-week {
+  margin-top: auto;
+  padding-bottom: 6px;
+  opacity: 0;
+  animation: loadinFade 600ms 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.loadin-week p {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* MIDDLE STAGE — 70% of viewport */
+.loadin-stage {
+  flex: 0 0 70%;
+  position: relative;
+  overflow: hidden;
+}
+.loadin-stage svg {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.loadin-stage::after {
+  /* lingering green floor glow */
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  transform: translateX(-50%) scaleX(0.3);
+  width: 76%;
+  height: 80px;
+  background: radial-gradient(ellipse at center, rgba(34, 197, 94, 0.20), transparent 70%);
+  filter: blur(10px);
+  pointer-events: none;
+  opacity: 0;
+  animation: loadinFloorGlow 1100ms 2700ms cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+.loadin-flash {
+  position: absolute;
+  left: 50%;
+  bottom: 38%;
+  transform: translateX(-50%) scale(0);
+  width: 88%;
+  height: 36px;
+  background: radial-gradient(ellipse at center, rgba(74, 222, 128, 0.55), transparent 70%);
+  filter: blur(14px);
+  pointer-events: none;
+  opacity: 0;
+  animation:
+    loadinImpactFlash 500ms 1200ms ease-out,
+    loadinImpactFlash 500ms 1800ms ease-out,
+    loadinImpactFlash 700ms 2600ms ease-out,
+    loadinImpactFlash 500ms 3400ms ease-out;
+}
+
+/* shake the stage on each plate landing */
+.loadin-stage {
+  animation:
+    loadinShakeSmall 200ms 1200ms ease-out,
+    loadinShakeSmall 200ms 1800ms ease-out,
+    loadinShake      380ms 2600ms ease-out,
+    loadinShakeSmall 200ms 3400ms ease-out;
+}
+
+/* CTA — Start button area, 12% of viewport */
+.loadin-cta {
+  flex: 0 0 12%;
+  display: flex;
+  align-items: center;
+  padding: 0 22px max(14px, env(safe-area-inset-bottom, 14px));
+}
+.loadin-start {
+  width: 100%;
+  background: var(--primary);
+  color: var(--bg);
+  border: none;
+  padding: 16px 22px;
+  border-radius: 14px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: loadinRisingFade 600ms 2900ms cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  box-shadow: 0 14px 40px -14px rgba(34, 197, 94, 0.7);
+  transition: background 160ms, transform 100ms;
+}
+.loadin-start:hover  { background: var(--primary-hi); }
+.loadin-start:active { transform: translateY(1px); }
+.loadin-start:disabled { opacity: 0.55; cursor: progress; }
+.loadin-start .arrow {
+  display: inline-block;
+  font-size: 18px;
+  letter-spacing: 0;
+  transition: transform 200ms;
+}
+.loadin-start:hover .arrow { transform: translateX(2px); }
+
+/* ==============================================================
+   PLATE animations
+   ============================================================== */
+.loadin-plate {
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+@keyframes loadinDrop {
+  0%   { transform: translateY(-720px); opacity: 0; }
+  10%  { opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes loadinDropBig {
+  0%   { transform: translateY(-760px); opacity: 0; }
+  10%  { opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes loadinShakeSmall {
+  0%, 100% { transform: translate(0, 0); }
+  25%      { transform: translate(0, 1px); }
+  50%      { transform: translate(-1px, 0); }
+  75%      { transform: translate(1px, 1px); }
+}
+@keyframes loadinShake {
+  0%, 100% { transform: translate(0, 0); }
+  15%      { transform: translate(-2px, 1px); }
+  30%      { transform: translate(2px, -1px); }
+  45%      { transform: translate(-2px, 2px); }
+  60%      { transform: translate(2px, 0); }
+  75%      { transform: translate(-1px, -1px); }
+  90%      { transform: translate(1px, 1px); }
+}
+@keyframes loadinFade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes loadinFloorGlow {
+  from { opacity: 0; transform: translateX(-50%) scaleX(0.3); }
+  to   { opacity: 1; transform: translateX(-50%) scaleX(1); }
+}
+@keyframes loadinImpactFlash {
+  0%   { opacity: 0; transform: translateX(-50%) scale(0); }
+  25%  { opacity: 1; transform: translateX(-50%) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) scale(1.4); }
+}
+@keyframes loadinRisingFade {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* per-plate timings — chronological order Day 1 → Day 4 */
+.loadin-plate-1 { animation: loadinDrop    700ms  500ms cubic-bezier(0.55, 0, 0.92, 0.4) forwards; }
+.loadin-plate-2 { animation: loadinDrop    700ms 1100ms cubic-bezier(0.55, 0, 0.92, 0.4) forwards; }
+.loadin-plate-3 { animation: loadinDropBig 850ms 1750ms cubic-bezier(0.6,  0, 0.95, 0.35) forwards; }
+.loadin-plate-4 { animation: loadinDrop    700ms 2700ms cubic-bezier(0.55, 0, 0.92, 0.4) forwards; }
+
+/* For when current isn't Day 3 — fall back to a generic "current" treatment.
+   Future versions can drive timings entirely from inline style for arbitrary N. */
+.loadin-plate-current {
+  animation: loadinDropBig 850ms 1750ms cubic-bezier(0.6, 0, 0.95, 0.35) forwards;
+}
