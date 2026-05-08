@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import './load-in.css';
 
 type Day = {
@@ -21,6 +21,10 @@ type Suggested = {
 const SLEEVE_TOP = 8;
 const SLEEVE_BOTTOM = 600;
 const GAP = 8;
+const BASE_DELAY = 500;
+const STAGGER = 600;
+const DROP_DURATION = 850;
+const BUTTON_BUFFER = 200;
 
 function shortLabel(label: string): string {
   // Strip "Day N — " or "Day N - " prefix the way /today's main page does.
@@ -32,11 +36,13 @@ export function LoadInView({
   greetingName,
   days,
   suggested,
+  threeInARowWarning,
   rightControls,
 }: {
   greetingName: string;
   days: Day[];
   suggested: Suggested;
+  threeInARowWarning?: boolean;
   rightControls?: React.ReactNode;
 }) {
   const router = useRouter();
@@ -47,22 +53,43 @@ export function LoadInView({
   const plateHeight =
     N > 0 ? Math.floor((SLEEVE_BOTTOM - SLEEVE_TOP - (N - 1) * GAP) / N) : 140;
 
-  // Find the current/suggested plate index
   const currentIndex = suggested
     ? sorted.findIndex((d) => d.dayId === suggested.dayId)
     : -1;
 
-  // Render order: top of stack = newest (Day N), bottom of stack = oldest (Day 1)
-  // SVG y-coordinate: 0 is top, so Day N gets the smallest y, Day 1 gets the largest.
+  // Stack from top (newest = Day N) down to bottom (oldest = Day 1).
+  // Animation order is chronological — Day 1 lands first.
   const positioned = sorted.map((d, chronoIndex) => {
     const stackPos = N - 1 - chronoIndex; // 0 = bottom, N-1 = top
     const yOffset = SLEEVE_TOP + stackPos * (plateHeight + GAP);
     const isCurrent = chronoIndex === currentIndex;
-    return { day: d, yOffset, isCurrent, chronoIndex };
+    const delay = BASE_DELAY + chronoIndex * STAGGER;
+    const impactTime = delay + DROP_DURATION;
+    return { day: d, yOffset, isCurrent, chronoIndex, delay, impactTime };
   });
+
+  const impactTimes = positioned.map((p) => p.impactTime);
+  const lastImpact = impactTimes.length > 0 ? Math.max(...impactTimes) : 0;
+  const currentImpact =
+    positioned.find((p) => p.isCurrent)?.impactTime ?? lastImpact;
+
+  const shakeAnim =
+    impactTimes.map((t) => `loadinShake 380ms ${t}ms ease-out`).join(', ') ||
+    'none';
+  const flashAnim =
+    impactTimes
+      .map((t) => `loadinImpactFlash 600ms ${t}ms ease-out`)
+      .join(', ') || 'none';
+  const buttonDelay = lastImpact + BUTTON_BUFFER;
 
   async function start() {
     if (!suggested || busy) return;
+    if (threeInARowWarning && !suggested.workoutId) {
+      const ok = window.confirm(
+        "You've trained the last 2 days. Three days in a row isn't recommended. Start anyway?",
+      );
+      if (!ok) return;
+    }
     setBusy(true);
     try {
       if (suggested.workoutId) {
@@ -90,6 +117,12 @@ export function LoadInView({
     : 'All done this week';
   const startedAlready = !!suggested?.workoutId;
 
+  const stageStyle: CSSProperties = {
+    animation: shakeAnim,
+    // CSS custom property for the floor glow delay
+    ['--floor-glow-delay' as string]: `${currentImpact}ms`,
+  };
+
   return (
     <div className="loadin-screen">
       <div className="loadin-top">
@@ -105,8 +138,14 @@ export function LoadInView({
         </div>
       </div>
 
-      <div className="loadin-stage">
-        <div className="loadin-flash" />
+      {threeInARowWarning && (
+        <div className="loadin-warn">
+          <p>2 days in a row · a third isn&rsquo;t recommended</p>
+        </div>
+      )}
+
+      <div className="loadin-stage" style={stageStyle}>
+        <div className="loadin-flash" style={{ animation: flashAnim }} />
         <svg
           viewBox="0 0 400 700"
           xmlns="http://www.w3.org/2000/svg"
@@ -155,9 +194,7 @@ export function LoadInView({
                 numOctaves={2}
                 seed={6}
               />
-              <feColorMatrix
-                values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.34 0"
-              />
+              <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.34 0" />
             </filter>
           </defs>
 
@@ -165,25 +202,40 @@ export function LoadInView({
           <rect x={172} y={0} width={56} height={6} rx={1} fill="url(#loadin-sleeve)" />
           <rect x={172} y={0} width={56} height={2} fill="rgba(255,255,255,0.45)" />
           <rect x={178} y={6} width={44} height={595} fill="url(#loadin-sleeve)" />
-          <rect x={178} y={6} width={44} height={595} filter="url(#loadin-brushed)" opacity={0.5} />
+          <rect
+            x={178}
+            y={6}
+            width={44}
+            height={595}
+            filter="url(#loadin-brushed)"
+            opacity={0.5}
+          />
           <rect x={198.5} y={6} width={2} height={595} fill="rgba(255,255,255,0.55)" />
           <rect x={160} y={601} width={80} height={20} fill="url(#loadin-collar)" />
-          <rect x={160} y={601} width={80} height={20} filter="url(#loadin-brushed)" opacity={0.28} />
+          <rect
+            x={160}
+            y={601}
+            width={80}
+            height={20}
+            filter="url(#loadin-brushed)"
+            opacity={0.28}
+          />
           <rect x={160} y={601} width={80} height={2} fill="rgba(0,0,0,0.85)" />
           <rect x={160} y={619} width={80} height={2} fill="rgba(0,0,0,0.6)" />
           <rect x={160} y={607} width={80} height={2} fill="rgba(255,255,255,0.42)" />
           <rect x={186} y={621} width={28} height={79} fill="url(#loadin-shaft)" />
-          <rect x={186} y={621} width={28} height={79} filter="url(#loadin-brushed)" opacity={0.3} />
+          <rect
+            x={186}
+            y={621}
+            width={28}
+            height={79}
+            filter="url(#loadin-brushed)"
+            opacity={0.3}
+          />
           <rect x={198.5} y={621} width={2} height={79} fill="rgba(255,255,255,0.55)" />
 
-          {/* Plates — chronological, Day 1 at bottom */}
-          {positioned.map(({ day, yOffset, isCurrent, chronoIndex }) => {
-            const animClass =
-              N === 4
-                ? `loadin-plate-${chronoIndex + 1}`
-                : isCurrent
-                  ? 'loadin-plate-current'
-                  : `loadin-plate-${(chronoIndex % 4) + 1}`;
+          {/* Plates — chronological, Day 1 lands first */}
+          {positioned.map(({ day, yOffset, isCurrent, delay }) => {
             const isDone = day.status === 'done';
             const isInProgress = day.status === 'in_progress';
             const isMissed = day.status === 'missed';
@@ -192,7 +244,11 @@ export function LoadInView({
             const strokeWidth = isCurrent ? 2 : 1;
             const label = shortLabel(day.label);
             return (
-              <g key={day.dayId} className={`loadin-plate ${animClass}`}>
+              <g
+                key={day.dayId}
+                className="loadin-plate"
+                style={{ animationDelay: `${delay}ms` }}
+              >
                 <g transform={`translate(0 ${yOffset})`}>
                   <rect
                     x={20}
@@ -224,7 +280,6 @@ export function LoadInView({
                   >
                     {label}
                   </text>
-                  {/* status chip on the right */}
                   <StatusChip
                     cx={360}
                     cy={plateHeight / 2}
@@ -255,6 +310,7 @@ export function LoadInView({
         <button
           type="button"
           className="loadin-start"
+          style={{ animationDelay: `${buttonDelay}ms` }}
           onClick={start}
           disabled={!suggested || busy}
         >
@@ -295,7 +351,6 @@ function StatusChip({
         : tone === 'missed'
           ? { fill: 'rgba(251,191,36,0.10)', stroke: 'rgba(251,191,36,0.3)', text: 'var(--warn)' }
           : { fill: 'rgba(18,26,28,0.6)', stroke: 'var(--border)', text: 'var(--muted)' };
-  // approximate width by letter count
   const width = Math.max(58, label.length * 6.5 + 18);
   return (
     <g transform={`translate(${cx} ${cy})`}>
