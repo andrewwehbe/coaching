@@ -1,134 +1,220 @@
 import Link from 'next/link';
-import { formatDistanceToNow } from 'date-fns';
+import { startOfWeek, formatISO } from 'date-fns';
 
 import { requireCoach } from '@/lib/coach-guard';
-import { listClientSummaries, type ClientStatus } from '@/lib/clients';
+import { listClientSummaries } from '@/lib/clients';
 import { db } from '@/lib/supabase';
-import { AlertsStrip } from './alerts-strip';
 
 export const dynamic = 'force-dynamic';
 
+const LIVE_LOOKBACK_MS = 6 * 60 * 60 * 1000;
+
 export default async function CoachHome() {
   const user = await requireCoach();
-
   const supa = db();
-  const [{ data: alerts }, clients] = await Promise.all([
-    supa
-      .from('alerts')
-      .select('id, client_id, type, message, data, created_at, clients(name)')
-      .is('acknowledged_at', null)
-      .order('created_at', { ascending: false })
-      .limit(20),
+
+  const now = new Date();
+  const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+  const weekStartIso = formatISO(weekStart, { representation: 'date' });
+  const sinceIso = new Date(Date.now() - LIVE_LOOKBACK_MS).toISOString();
+
+  const [summaries, liveRes, doneRes] = await Promise.all([
     listClientSummaries(),
+    supa
+      .from('workouts')
+      .select(
+        'id, started_at, clients(name), exercise_logs(id, created_at, exercises(name))'
+      )
+      .is('completed_at', null)
+      .eq('is_missed', false)
+      .gte('started_at', sinceIso)
+      .order('started_at', { ascending: false }),
+    supa
+      .from('workouts')
+      .select('id, exercise_logs(pain_reason, sets(video_url))')
+      .gte('week_start', weekStartIso)
+      .not('completed_at', 'is', null)
+      .eq('is_missed', false),
   ]);
 
-  const normalized = (alerts ?? []).map((a) => {
-    const raw = a.clients as unknown;
-    const c = Array.isArray(raw) ? raw[0] : raw;
-    return { ...a, clients: c ? { name: (c as { name: string }).name } : null };
-  });
-  const sortedAlerts = normalized.slice().sort((a, b) => {
-    if (a.type === 'pain' && b.type !== 'pain') return -1;
-    if (b.type === 'pain' && a.type !== 'pain') return 1;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  const activeSummaries = summaries.filter((c) => c.active);
+
+  // Top-left: sessions left this week.
+  const remainingClients = activeSummaries.filter(
+    (c) => c.daysLoggedThisWeek < (c.weeklyDayTarget ?? 4)
+  );
+  const sessionsLeft = remainingClients.reduce(
+    (sum, c) => sum + Math.max(0, (c.weeklyDayTarget ?? 4) - c.daysLoggedThisWeek),
+    0
+  );
+
+  // Top-right: live sessions.
+  const live = (liveRes.data ?? []).map((w) => {
+    const cs = w.clients as unknown;
+    const c = (Array.isArray(cs) ? cs[0] : cs) as { name?: string } | null;
+    const logs =
+      (w.exercise_logs as Array<{
+        created_at: string;
+        exercises: { name?: string } | { name?: string }[] | null;
+      }>) ?? [];
+    const sortedLogs = logs
+      .slice()
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const latest = sortedLogs[0];
+    const ex = latest
+      ? Array.isArray(latest.exercises)
+        ? latest.exercises[0]
+        : latest.exercises
+      : null;
+    return {
+      clientName: c?.name ?? '(unknown)',
+      currentExerciseName: ex?.name ?? null,
+    };
   });
 
+  // Bottom-left: sessions done this week.
+  const doneCount = (doneRes.data ?? []).length;
+  let videoCount = 0;
+  let painCount = 0;
+  for (const w of doneRes.data ?? []) {
+    const logs =
+      (w.exercise_logs as Array<{
+        pain_reason: string | null;
+        sets: { video_url: string | null }[] | null;
+      }>) ?? [];
+    let hasVideo = false;
+    let hasPain = false;
+    for (const l of logs) {
+      if (l.pain_reason) hasPain = true;
+      for (const s of l.sets ?? []) if (s.video_url) hasVideo = true;
+    }
+    if (hasVideo) videoCount++;
+    if (hasPain) painCount++;
+  }
+
+  // Bottom-right: clients.
+  const activeCount = activeSummaries.length;
+  const onTrackCount = activeSummaries.filter((c) => c.status === 'on_track').length;
+  const behindCount = activeSummaries.filter((c) => c.status === 'behind').length;
+  const painClientCount = activeSummaries.filter((c) => c.status === 'pain').length;
+
+  const liveSubline = (() => {
+    if (live.length === 0) return 'No one training now';
+    const first = live[0];
+    const lead = first.currentExerciseName
+      ? `${first.clientName} · ${first.currentExerciseName}`
+      : first.clientName;
+    if (live.length === 1) return lead;
+    return `${lead}\n+${live.length - 1} more`;
+  })();
+
+  const clientsSubline = (() => {
+    const parts = [`${onTrackCount} on track`];
+    if (behindCount) parts.push(`${behindCount} behind`);
+    if (painClientCount) parts.push(`${painClientCount} pain`);
+    return parts.join(' · ');
+  })();
+
   return (
-    <main className="flex flex-1 flex-col px-5 py-7 max-w-3xl w-full mx-auto">
-      <header className="mb-7 flex items-end justify-between gap-4">
+    <main className="flex flex-1 flex-col px-4 pt-3 pb-4 sm:pt-4 max-w-5xl w-full mx-auto min-h-0">
+      <header className="mb-3 sm:mb-4 flex items-baseline justify-between gap-3 shrink-0">
         <div className="min-w-0">
-          <p className="text-xs uppercase tracking-[0.18em] text-faint">Welcome back</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight truncate">{user.name}</h1>
+          <p className="text-[10px] uppercase tracking-[0.18em] text-faint">Welcome back</p>
+          <h1 className="mt-0.5 text-xl sm:text-2xl font-semibold tracking-tight truncate">
+            {user.name}
+          </h1>
         </div>
         <Link
-          href="/coach/clients/new"
-          className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-primary hover:bg-primary-hi text-bg px-4 py-2.5 text-sm font-semibold transition-colors shadow-[0_8px_24px_-10px_rgba(34,197,94,0.6)]"
+          href="/coach/weekly"
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-border bg-surface/60 hover:bg-surface hover:border-primary/40 px-3 py-1.5 text-xs font-medium text-muted hover:text-text transition-colors"
         >
-          <span className="text-base leading-none">+</span> New client
+          📊 Weekly
         </Link>
       </header>
 
-      <Link
-        href="/coach/weekly"
-        className="mb-6 inline-flex items-center gap-2 self-start rounded-xl border border-border bg-surface/60 hover:bg-surface hover:border-primary/40 px-4 py-2 text-sm font-medium text-muted hover:text-text transition-colors"
-      >
-        📊 Weekly report
-      </Link>
-
-      <AlertsStrip alerts={sortedAlerts} />
-
-      <section className="mt-8">
-        <h2 className="text-xs uppercase tracking-[0.18em] text-faint mb-3">Clients</h2>
-        {clients.length === 0 ? (
-          <p className="text-muted text-sm">
-            No clients yet.{' '}
-            <Link
-              href="/coach/clients/new"
-              className="text-primary-hi hover:text-primary underline transition-colors"
-            >
-              Add one
-            </Link>
-            .
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {clients.map((c) => (
-              <li key={c.id}>
-                <Link
-                  href={`/coach/clients/${c.id}`}
-                  prefetch={false}
-                  className="block rounded-2xl px-4 py-3.5 border border-border bg-surface/60 hover:border-border-strong hover:bg-surface transition-all"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-medium text-text truncate">{c.name}</p>
-                      <p className="text-xs text-faint mt-0.5">
-                        {c.daysLoggedThisWeek}/{c.weeklyDayTarget} this week
-                        {c.lastActivityAt && (
-                          <>
-                            {' · last '}
-                            {formatDistanceToNow(new Date(c.lastActivityAt), {
-                              addSuffix: true,
-                            })}
-                          </>
-                        )}
-                      </p>
-                    </div>
-                    <StatusChip status={c.status} />
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <div className="grid flex-1 min-h-0 grid-cols-2 grid-rows-2 gap-3 sm:gap-4">
+        <DashBox
+          href="/coach/sessions/remaining"
+          eyebrow="Sessions left"
+          hero={String(sessionsLeft)}
+          subline={
+            remainingClients.length === 0
+              ? 'Everyone hit target'
+              : `${remainingClients.length} client${
+                  remainingClients.length === 1 ? '' : 's'
+                } still owed`
+          }
+          tone={sessionsLeft > 0 ? 'warn' : 'good'}
+        />
+        <DashBox
+          href="/coach/sessions/live"
+          eyebrow="Current sessions"
+          hero={String(live.length)}
+          subline={liveSubline}
+          tone={live.length > 0 ? 'good' : 'neutral'}
+          pulse={live.length > 0}
+        />
+        <DashBox
+          href="/coach/sessions"
+          eyebrow="Done this week"
+          hero={String(doneCount)}
+          subline={
+            doneCount === 0
+              ? 'No completions yet'
+              : `${videoCount} with video${painCount ? ` · ${painCount} pain` : ''}`
+          }
+          tone="neutral"
+        />
+        <DashBox
+          href="/coach/clients"
+          eyebrow="Clients"
+          hero={String(activeCount)}
+          subline={activeCount === 0 ? 'Add your first' : clientsSubline}
+          tone="neutral"
+        />
+      </div>
     </main>
   );
 }
 
-function StatusChip({ status }: { status: ClientStatus }) {
-  const map: Record<ClientStatus, { label: string; className: string }> = {
-    on_track: {
-      label: 'On track',
-      className: 'bg-primary/15 text-primary-hi border-primary/30',
-    },
-    behind: {
-      label: 'Behind',
-      className: 'bg-warn/10 text-warn border-warn/30',
-    },
-    inactive: {
-      label: 'Inactive',
-      className: 'bg-surface-2 text-muted border-border',
-    },
-    pain: {
-      label: 'Pain',
-      className: 'bg-danger/10 text-danger border-danger/35',
-    },
-  };
-  const cfg = map[status];
+function DashBox(props: {
+  href: string;
+  eyebrow: string;
+  hero: string;
+  subline: string;
+  tone: 'good' | 'warn' | 'neutral';
+  pulse?: boolean;
+}) {
+  const heroClass =
+    props.tone === 'good'
+      ? 'text-primary-hi'
+      : props.tone === 'warn'
+        ? 'text-warn'
+        : 'text-text';
   return (
-    <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${cfg.className}`}>
-      {cfg.label}
-    </span>
+    <Link
+      href={props.href}
+      className="group relative flex flex-col justify-between rounded-2xl border border-border bg-surface/60 hover:bg-surface hover:border-primary/40 px-4 py-4 sm:px-5 sm:py-5 transition-all overflow-hidden min-h-0"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] sm:text-[11px] uppercase tracking-[0.18em] text-faint truncate">
+          {props.eyebrow}
+        </p>
+        {props.pulse && (
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-primary/60 animate-ping" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+          </span>
+        )}
+      </div>
+      <p
+        className={`text-4xl sm:text-6xl font-semibold tabular-nums leading-none ${heroClass}`}
+      >
+        {props.hero}
+      </p>
+      <p className="text-xs sm:text-sm text-muted whitespace-pre-line line-clamp-2">
+        {props.subline}
+      </p>
+    </Link>
   );
 }
