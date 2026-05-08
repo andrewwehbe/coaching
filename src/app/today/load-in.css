@@ -63,9 +63,10 @@
   color: var(--faint);
 }
 
-/* MIDDLE STAGE — 70% of viewport */
+/* MIDDLE STAGE — fills the rest of the viewport. The bar reaches the
+   bottom of the screen; the Start button overlays the bottom edge. */
 .loadin-stage {
-  flex: 0 0 70%;
+  flex: 1;
   position: relative;
   overflow: hidden;
 }
@@ -120,15 +121,14 @@
     loadinShakeSmall 200ms 3400ms ease-out;
 }
 
-/* CTA — Start button area, 12% of viewport */
-.loadin-cta {
-  flex: 0 0 12%;
-  display: flex;
-  align-items: center;
-  padding: 0 22px max(14px, env(safe-area-inset-bottom, 14px));
-}
+/* CTA — Start button overlays the bottom of the stage so the bar
+   visually reaches the very edge of the screen. */
 .loadin-start {
-  width: 100%;
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: max(20px, env(safe-area-inset-bottom, 20px));
+  z-index: 10;
   background: var(--primary);
   color: var(--bg);
   border: none;

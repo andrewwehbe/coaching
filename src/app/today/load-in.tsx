@@ -195,9 +195,9 @@ export function LoadInView({
               <g key={day.dayId} className={`loadin-plate ${animClass}`}>
                 <g transform={`translate(0 ${yOffset})`}>
                   <rect
-                    x={40}
+                    x={20}
                     y={0}
-                    width={320}
+                    width={360}
                     height={plateHeight}
                     rx={14}
                     fill="#000"
@@ -205,7 +205,7 @@ export function LoadInView({
                     strokeWidth={strokeWidth}
                   />
                   <text
-                    x={60}
+                    x={40}
                     y={plateHeight / 2 - 10}
                     fontFamily="ui-sans-serif, system-ui, sans-serif"
                     fontSize={11}
@@ -215,7 +215,7 @@ export function LoadInView({
                     {`DAY ${day.dayIndex}`}
                   </text>
                   <text
-                    x={60}
+                    x={40}
                     y={plateHeight / 2 + 24}
                     fontFamily="ui-sans-serif, system-ui, sans-serif"
                     fontWeight={500}
@@ -226,7 +226,7 @@ export function LoadInView({
                   </text>
                   {/* status chip on the right */}
                   <StatusChip
-                    cx={340}
+                    cx={360}
                     cy={plateHeight / 2}
                     label={
                       isDone
@@ -252,9 +252,6 @@ export function LoadInView({
             );
           })}
         </svg>
-      </div>
-
-      <div className="loadin-cta">
         <button
           type="button"
           className="loadin-start"
