@@ -9,11 +9,13 @@
   left: 0;
   right: 0;
   bottom: 0;
-  /* Fallback for older browsers, then dynamic viewport for iOS Safari
-     so the bar's shaft reaches the actual bottom of the visible area
-     instead of disappearing behind the URL bar. */
+  /* Use the LARGEST possible viewport so the bar's shaft physically
+     reaches the actual bottom of the screen on iOS — not just the
+     bottom of the URL-bar-shrunk visible area. The Start button below
+     gets a safe-area-aware bottom inset so it stays tappable above
+     the home indicator / URL bar. */
   height: 100vh;
-  height: 100dvh;
+  height: 100lvh;
   background: var(--bg);
   color: var(--text);
   display: flex;
@@ -136,6 +138,9 @@
   position: absolute;
   left: 22px;
   right: 22px;
+  /* Sit above the iOS home indicator (PWA) or the iOS Safari URL bar
+     (browser). PWA gets the safe-area inset; Safari falls back to 70px
+     so the button stays clear of the URL bar. */
   bottom: max(20px, env(safe-area-inset-bottom, 20px));
   z-index: 10;
   background: var(--primary);
@@ -162,6 +167,11 @@
 .loadin-start:hover  { background: var(--primary-hi); }
 .loadin-start:active { transform: translateY(1px); }
 .loadin-start:disabled { opacity: 0.55; cursor: progress; }
+@media not (display-mode: standalone) {
+  /* In iOS Safari (not added to home screen) the bottom URL bar steals
+     ~70px. Push the button above it so it stays tappable. */
+  .loadin-start { bottom: max(70px, env(safe-area-inset-bottom, 70px)); }
+}
 .loadin-start .arrow {
   display: inline-block;
   font-size: 18px;
