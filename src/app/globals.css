@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import url('https://api.fontshare.com/v2/css?f[]=boska@9,5,4&display=swap');
 
 :root {
   --bg: #06090a;
@@ -6,7 +7,8 @@
   --surface-2: #121a1c;
   --border: #1c2628;
   --border-strong: #29373a;
-  --text: #ecf2ee;
+  /* Slightly warmer near-white, more print-like than #ecf2ee. */
+  --text: #f0eee8;
   --muted: #8a9b94;
   --faint: #586862;
 
@@ -17,6 +19,8 @@
 
   --accent: #7dd3fc;
   --accent-deep: #38bdf8;
+  /* Editorial neutral — used sparingly, like a magazine pull-quote color. */
+  --bone: #e8dfd2;
 
   --warn: #fbbf24;
   --danger: #f87171;
@@ -31,6 +35,7 @@
   --color-text: var(--text);
   --color-muted: var(--muted);
   --color-faint: var(--faint);
+  --color-bone: var(--bone);
 
   --color-primary: var(--primary);
   --color-primary-hi: var(--primary-hi);
@@ -44,6 +49,8 @@
   --color-danger: var(--danger);
 
   --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: 'Boska', ui-serif, Georgia, serif;
 }
 
 html,
@@ -66,6 +73,20 @@ body {
   padding-right: env(safe-area-inset-right);
 }
 
+/* Subtle film grain — gives the app a printed/editorial feel.
+   Painted via overlay blend so it integrates with content beneath
+   instead of covering it. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.7 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
 /* Hide spin buttons on number inputs (phone-first). */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
@@ -76,12 +97,21 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* Soft pulse for active timer. */
+/* Soft pulse for active timers / live indicators. */
 @keyframes softPulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.78; }
 }
 .animate-soft-pulse { animation: softPulse 2.4s ease-in-out infinite; }
+
+/* Editorial page-load reveal — staggered fade-up. */
+@keyframes editorialReveal {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.editorial-reveal {
+  animation: editorialReveal 620ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
 
 /* Horizontal pill rows that should scroll without showing a bar. */
 .no-scrollbar::-webkit-scrollbar { display: none; }

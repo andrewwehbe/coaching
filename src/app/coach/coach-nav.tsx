@@ -14,20 +14,27 @@ const TABS = [
 export function CoachNav() {
   const pathname = usePathname() ?? '';
   return (
-    <nav className="flex items-center gap-1 overflow-x-auto no-scrollbar -mx-1 px-1">
+    <nav className="flex items-stretch gap-1 overflow-x-auto no-scrollbar -mx-1 pt-1.5">
       {TABS.map((t) => {
         const active = t.match(pathname);
         return (
           <Link
             key={t.href}
             href={t.href}
-            className={`shrink-0 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-              active
-                ? 'bg-primary/15 text-primary-hi border border-primary/30 shadow-[0_0_0_1px_rgba(34,197,94,0.05)]'
-                : 'text-muted hover:text-text hover:bg-surface/60 border border-transparent'
+            prefetch={false}
+            className={`group relative shrink-0 px-3 sm:px-4 pt-1.5 pb-2.5 text-[11px] uppercase tracking-[0.18em] font-medium transition-colors ${
+              active ? 'text-text' : 'text-faint hover:text-text'
             }`}
           >
             {t.label}
+            <span
+              aria-hidden
+              className={`absolute left-3 right-3 sm:left-4 sm:right-4 -bottom-px h-px transition-all ${
+                active
+                  ? 'bg-primary'
+                  : 'bg-transparent group-hover:bg-text/35'
+              }`}
+            />
           </Link>
         );
       })}
