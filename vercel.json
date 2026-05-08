@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/checkin-followup",
       "schedule": "0 4,14 * * 1"
+    },
+    {
+      "path": "/api/cron/stale-workouts",
+      "schedule": "0,30 * * * *"
     }
   ]
 }

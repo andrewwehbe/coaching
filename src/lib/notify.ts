@@ -9,6 +9,7 @@ export type AlertType =
   | 'missed_workout'
   | 'workout_started'
   | 'workout_completed'
+  | 'workout_stale'
   | 'check_in_due'
   | 'check_in_submitted'
   | 'missed_checkin';
@@ -23,6 +24,7 @@ const PUSHABLE: ReadonlySet<AlertType> = new Set([
   'missed_workout',
   'workout_started',
   'workout_completed',
+  'workout_stale',
   'check_in_submitted',
   'missed_checkin',
 ]);
@@ -46,6 +48,7 @@ export async function insertAlert(args: {
       args.type === 'pain' ? '⚠️ Pain reported'
       : args.type === 'workout_started' ? '🏋️ Started'
       : args.type === 'workout_completed' ? '✅ Finished'
+      : args.type === 'workout_stale' ? '🕒 Workout still open'
       : args.type === 'missed_workout' ? 'Behind on workouts'
       : args.type === 'stalled' ? 'Stalled exercise'
       : args.type === 'check_in_submitted' ? '📋 Check-in'
