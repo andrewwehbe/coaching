@@ -124,12 +124,23 @@ export default async function CoachHome() {
             {user.name}
           </h1>
         </div>
-        <Link
-          href="/coach/weekly"
-          className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-border bg-surface/60 hover:bg-surface hover:border-primary/40 px-3 py-1.5 text-xs font-medium text-muted hover:text-text transition-colors"
-        >
-          📊 Weekly
-        </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/coach/sessions/all"
+            prefetch={false}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-surface/60 hover:bg-surface hover:border-primary/40 px-3 py-1.5 text-xs font-medium text-muted hover:text-text transition-colors"
+          >
+            All history
+            <span aria-hidden>→</span>
+          </Link>
+          <Link
+            href="/coach/weekly"
+            prefetch={false}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-surface/60 hover:bg-surface hover:border-primary/40 px-3 py-1.5 text-xs font-medium text-muted hover:text-text transition-colors"
+          >
+            <span aria-hidden>📊</span> Weekly
+          </Link>
+        </div>
       </header>
 
       <div className="grid flex-1 min-h-0 grid-cols-2 grid-rows-2 gap-3 sm:gap-4">
@@ -163,7 +174,7 @@ export default async function CoachHome() {
               ? 'No completions yet'
               : `${videoCount} with video${painCount ? ` · ${painCount} pain` : ''}`
           }
-          tone="neutral"
+          tone={doneCount > 0 ? 'good' : 'neutral'}
         />
         <DashBox
           href="/coach/clients"
@@ -191,30 +202,66 @@ function DashBox(props: {
       : props.tone === 'warn'
         ? 'text-warn'
         : 'text-text';
+  const borderClass =
+    props.tone === 'good'
+      ? 'border-primary/20'
+      : props.tone === 'warn'
+        ? 'border-warn/25'
+        : 'border-border';
+  const glowStyle =
+    props.tone === 'good'
+      ? {
+          background:
+            'radial-gradient(150% 90% at 100% 0%, rgba(74,222,128,0.11), transparent 62%)',
+        }
+      : props.tone === 'warn'
+        ? {
+            background:
+              'radial-gradient(150% 90% at 100% 0%, rgba(251,191,36,0.10), transparent 62%)',
+          }
+        : undefined;
   return (
     <Link
       href={props.href}
-      className="group relative flex flex-col justify-between rounded-2xl border border-border bg-surface/60 hover:bg-surface hover:border-primary/40 px-4 py-4 sm:px-5 sm:py-5 transition-all overflow-hidden min-h-0"
+      prefetch={false}
+      className={`group relative isolate flex flex-col justify-between rounded-2xl border ${borderClass} bg-surface/60 hover:bg-surface hover:border-primary/45 hover:-translate-y-[1px] hover:shadow-[0_14px_36px_-18px_rgba(0,0,0,0.55)] transition-all duration-200 overflow-hidden min-h-0 px-4 py-4 sm:px-5 sm:py-5`}
     >
-      <div className="flex items-center justify-between gap-2">
+      {glowStyle && (
+        <div className="absolute inset-0 pointer-events-none" style={glowStyle} />
+      )}
+
+      <div className="relative flex items-center justify-between gap-2">
         <p className="text-[10px] sm:text-[11px] uppercase tracking-[0.18em] text-faint truncate">
           {props.eyebrow}
         </p>
         {props.pulse && (
-          <span className="relative flex h-2 w-2 shrink-0">
+          <span className="relative flex h-2.5 w-2.5 shrink-0">
             <span className="absolute inline-flex h-full w-full rounded-full bg-primary/60 animate-ping" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_10px_rgba(34,197,94,0.55)]" />
           </span>
         )}
       </div>
+
       <p
-        className={`text-4xl sm:text-6xl font-semibold tabular-nums leading-none ${heroClass}`}
+        className={`relative text-5xl sm:text-7xl font-semibold tabular-nums leading-none tracking-tight ${heroClass}`}
       >
         {props.hero}
       </p>
-      <p className="text-xs sm:text-sm text-muted whitespace-pre-line line-clamp-2">
-        {props.subline}
-      </p>
+
+      <div className="relative flex items-end justify-between gap-2">
+        <p className="text-xs sm:text-sm text-muted whitespace-pre-line line-clamp-2 flex-1 min-w-0">
+          {props.subline}
+        </p>
+        <span className="shrink-0 inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium uppercase tracking-[0.12em] text-faint group-hover:text-primary-hi transition-all">
+          View all
+          <span
+            aria-hidden
+            className="text-sm leading-none translate-x-0 group-hover:translate-x-0.5 transition-transform"
+          >
+            →
+          </span>
+        </span>
+      </div>
     </Link>
   );
 }
