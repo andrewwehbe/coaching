@@ -13,6 +13,9 @@ const LINKED_CLIENT_ID =
   process.env.COACH_LINKED_CLIENT_ID || '8a06a900-aec4-44fc-8da4-9f90581a74c0';
 import { LoadInView } from './load-in';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function TodayPage() {
   const user = await readSession();
   if (!user) redirect('/login');
