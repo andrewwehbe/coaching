@@ -10,7 +10,7 @@
      doesn't see the previous user's cached HTML.
 */
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const APP_CACHE = `coaching-app-${VERSION}`;
 const STATIC_CACHE = `coaching-static-${VERSION}`;
 const OFFLINE_URL = '/offline';

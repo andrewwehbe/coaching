@@ -371,6 +371,11 @@ export function WorkoutSession({
         return;
       }
       setDoneNow(true);
+      // Bust the service worker's HTML cache so the next /today open
+      // shows the freshly-completed day as Done instead of in-progress.
+      try {
+        navigator.serviceWorker?.controller?.postMessage({ type: 'clear-cache' });
+      } catch {}
       router.refresh();
     } finally {
       setSubmitting(false);
