@@ -10,6 +10,7 @@ const PHOTO_BUCKET = 'check-in-photos';
 import { ClientActions } from './client-actions';
 import { ProgramSection } from './program-section';
 import { HistorySection } from './history-section';
+import { SkipPainSection } from './skip-pain-section';
 
 type Params = Promise<{ id: string }>;
 
@@ -23,14 +24,19 @@ export default async function ClientDetailPage(props: { params: Params }) {
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekStartIso = formatISO(weekStart, { representation: 'date' });
 
-  // Client + program + workouts + thisWeek + checkIns are all keyed off
-  // clientId only and can run in a single round-trip.
+  // 14-day skip/pain window — used to surface recent client friction so the
+  // coach can spot patterns without drilling into individual workouts.
+  const skipPainSinceIso = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Client + program + workouts + thisWeek + checkIns + flags are all keyed
+  // off clientId only and can run in a single round-trip.
   const [
     { data: client },
     { data: program },
     { data: workouts },
     { data: thisWeek },
     { data: checkIns },
+    { data: skipPain },
   ] = await Promise.all([
     supa
       .from('clients')
@@ -64,6 +70,16 @@ export default async function ClientDetailPage(props: { params: Params }) {
       .eq('client_id', id)
       .order('date', { ascending: false })
       .limit(8),
+    supa
+      .from('exercise_logs')
+      .select(
+        'id, status, skip_reason, pain_reason, created_at, exercises!inner(name), workouts!inner(client_id, started_at)',
+      )
+      .eq('workouts.client_id', id)
+      .gte('workouts.started_at', skipPainSinceIso)
+      .or('status.eq.skipped,status.eq.pain,pain_reason.not.is.null')
+      .order('created_at', { ascending: false })
+      .limit(20),
   ]);
   if (!client) notFound();
 
@@ -142,6 +158,8 @@ export default async function ClientDetailPage(props: { params: Params }) {
         active={client.active}
         currentWeekIsDeload={currentWeekIsDeload}
       />
+
+      <SkipPainSection rows={skipPain ?? []} />
 
       <ProgramSection
         days={
