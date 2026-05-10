@@ -154,6 +154,16 @@ export default async function ClientDetailPage(props: { params: Params }) {
             Edit program
           </Link>
         )}
+        {program && (
+          <Link
+            href={`/coach/clients/${client.id}/baselines`}
+            prefetch={false}
+            className="inline-flex items-center gap-2 rounded-sm border border-border-strong hover:border-primary/50 bg-surface/40 hover:bg-surface text-muted hover:text-text px-4 py-2 text-[10px] sm:text-[11px] uppercase tracking-[0.22em] font-medium transition-colors"
+            title="Import starting bests + set training start date for mid-mesocycle transitions"
+          >
+            Baselines
+          </Link>
+        )}
       </div>
 
       <ClientActions

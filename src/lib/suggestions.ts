@@ -83,13 +83,13 @@ export async function buildSuggestionsByClient(
   // Fetch active programs + days + exercises for each client.
   const { data: programs } = await supa
     .from('programs')
-    .select('id, client_id, uploaded_at, days(id, day_index, label, exercises(id, name, name_key, prescribed_sets, archived_at))')
+    .select('id, client_id, uploaded_at, training_start_at, days(id, day_index, label, exercises(id, name, name_key, prescribed_sets, archived_at))')
     .in('client_id', clientIds)
     .eq('active', true);
 
   type ExRow = { id: string; name: string; name_key: string; prescribed_sets: number | null; archived_at: string | null };
   type DayRow = { id: string; day_index: number; label: string; exercises: ExRow[] };
-  type ProgRow = { id: string; client_id: string; uploaded_at: string; days: DayRow[] };
+  type ProgRow = { id: string; client_id: string; uploaded_at: string; training_start_at: string | null; days: DayRow[] };
 
   const programByClient = new Map<string, ProgRow>();
   for (const p of (programs ?? []) as unknown as ProgRow[]) {
@@ -203,8 +203,13 @@ export async function buildSuggestionsByClient(
     }
 
     // Plateau: aggregate by exercise NAME across all days for this client.
-    const programWeekNumber = prog
-      ? Math.max(1, differenceInCalendarWeeks(at, new Date(prog.uploaded_at), { weekStartsOn: 1 }) + 1)
+    // Use training_start_at when the coach has set it (client transitioned
+    // mid-mesocycle from elsewhere), else fall back to uploaded_at.
+    const programAnchor = prog
+      ? new Date(prog.training_start_at ?? prog.uploaded_at)
+      : null;
+    const programWeekNumber = programAnchor
+      ? Math.max(1, differenceInCalendarWeeks(at, programAnchor, { weekStartsOn: 1 }) + 1)
       : 1;
 
     if (!adherenceLow && prog) {
