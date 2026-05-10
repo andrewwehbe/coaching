@@ -150,34 +150,21 @@ export async function POST(req: Request) {
     });
 
     // Archive the originals; insert replacements at the same positions.
-    // The (day_id, position) unique constraint forces archived rows to
-    // vacate their slot — bump position by +1000 so the replacement can
-    // claim the original slot. Old logs stay attached to the archived
-    // rows so history is preserved.
+    // The unique index on (day_id, position) is partial WHERE archived_at
+    // IS NULL (migration 0007), so archived rows drop out of the index
+    // and the replacement can take the slot. Old logs stay attached to
+    // the archived rows so history is preserved.
     const archivedAt = new Date().toISOString();
-    const archiveResults = await Promise.all(
-      rows.map((r) =>
-        supa
-          .from('exercises')
-          .update({ archived_at: archivedAt, position: r.position + 1000 })
-          .eq('id', r.id),
-      ),
-    );
-    for (const r of archiveResults) {
-      if (r.error) return NextResponse.json({ error: r.error.message }, { status: 500 });
-    }
+    const { error: arErr } = await supa
+      .from('exercises')
+      .update({ archived_at: archivedAt })
+      .in('id', ids);
+    if (arErr) return NextResponse.json({ error: arErr.message }, { status: 500 });
 
     const { error: insErr } = await supa.from('exercises').insert(newRows);
     if (insErr) {
-      // best-effort revert: restore both archived_at and position.
-      await Promise.all(
-        rows.map((r) =>
-          supa
-            .from('exercises')
-            .update({ archived_at: null, position: r.position })
-            .eq('id', r.id),
-        ),
-      );
+      // best-effort revert.
+      await supa.from('exercises').update({ archived_at: null }).in('id', ids);
       return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
 
