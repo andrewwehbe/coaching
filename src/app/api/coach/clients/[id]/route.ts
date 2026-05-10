@@ -16,7 +16,7 @@ export async function GET(_req: Request, { params }: { params: Params }) {
   const { data: client } = await supa
     .from('clients')
     .select(
-      'id, name, active, weekly_day_target, body_weight_freq, photo_check_in_enabled, meal_plan_enabled, created_at, deactivated_at',
+      'id, name, active, weekly_day_target, body_weight_freq, photo_check_in_enabled, meal_plan_enabled, log_mode, created_at, deactivated_at',
     )
     .eq('id', id)
     .maybeSingle();
@@ -31,6 +31,7 @@ const Patch = z.object({
   body_weight_freq: z.enum(['none', 'daily', '3x', 'weekly']).optional(),
   photo_check_in_enabled: z.boolean().optional(),
   meal_plan_enabled: z.boolean().optional(),
+  log_mode: z.enum(['sets', 'best']).optional(),
   active: z.boolean().optional(),
 });
 

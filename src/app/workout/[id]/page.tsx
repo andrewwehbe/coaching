@@ -27,13 +27,22 @@ export default async function WorkoutPage(props: { params: Params }) {
 
   const supa = db();
 
-  const { data: workout } = await supa
-    .from('workouts')
-    .select('id, day_id, completed_at, client_id, is_deload')
-    .eq('id', id)
-    .maybeSingle();
+  const [{ data: workout }, { data: clientPrefs }] = await Promise.all([
+    supa
+      .from('workouts')
+      .select('id, day_id, completed_at, client_id, is_deload')
+      .eq('id', id)
+      .maybeSingle(),
+    supa
+      .from('clients')
+      .select('log_mode')
+      .eq('id', user.id)
+      .maybeSingle(),
+  ]);
 
   if (!workout || workout.client_id !== user.id) notFound();
+  const logMode: 'sets' | 'best' =
+    clientPrefs?.log_mode === 'best' ? 'best' : 'sets';
 
   // day, exercises, logs are all keyed off workout.day_id / workout.id and
   // independent of each other — parallel fetch.
@@ -109,6 +118,7 @@ export default async function WorkoutPage(props: { params: Params }) {
       dayLabel={day?.label ?? 'Workout'}
       completed={!!workout.completed_at}
       isDeload={!!workout.is_deload}
+      logMode={logMode}
       exercises={states}
     />
   );

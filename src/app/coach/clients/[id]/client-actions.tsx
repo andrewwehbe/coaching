@@ -7,16 +7,39 @@ export function ClientActions({
   clientId,
   active,
   currentWeekIsDeload,
+  logMode,
 }: {
   clientId: string;
   active: boolean;
   currentWeekIsDeload: boolean;
+  logMode: 'sets' | 'best';
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
   const [newPin, setNewPin] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  async function setLogMode(next: 'sets' | 'best') {
+    if (next === logMode) return;
+    setBusy('logmode');
+    setError(null);
+    try {
+      const res = await fetch(`/api/coach/clients/${clientId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ log_mode: next }),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        setError(b.error ?? 'Failed');
+        return;
+      }
+      startTransition(() => router.refresh());
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function regenerate() {
     if (
@@ -103,6 +126,34 @@ export function ClientActions({
           </button>
         </div>
       )}
+
+      <div className="mb-3">
+        <p className="text-[10px] uppercase tracking-[0.18em] text-faint mb-1.5">
+          Log mode
+        </p>
+        <div className="inline-flex rounded-lg border border-border bg-surface/40 p-0.5">
+          {(['sets', 'best'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setLogMode(mode)}
+              disabled={busy !== null || pending}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors disabled:opacity-50 ${
+                logMode === mode
+                  ? 'bg-primary/15 text-primary-hi'
+                  : 'text-muted hover:text-text'
+              }`}
+            >
+              {mode === 'sets' ? 'Per-set' : 'Best set only'}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1.5 text-[11px] text-faint">
+          {logMode === 'best'
+            ? 'Client logs one entry per exercise — taken as the session best.'
+            : 'Client logs every set individually.'}
+        </p>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <button

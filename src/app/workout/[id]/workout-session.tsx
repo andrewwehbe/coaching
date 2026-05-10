@@ -52,14 +52,22 @@ export function WorkoutSession({
   dayLabel,
   completed,
   isDeload,
+  logMode,
   exercises,
 }: {
   workoutId: string;
   dayLabel: string;
   completed: boolean;
   isDeload?: boolean;
+  /**
+   * 'sets' = log every set (default). 'best' = one entry per exercise,
+   * treated as the session's best set; submitting marks the exercise
+   * complete and advances. Set by clients.log_mode.
+   */
+  logMode?: 'sets' | 'best';
   exercises: ExerciseState[];
 }) {
+  const bestMode = logMode === 'best';
   const router = useRouter();
 
   const [state, setState] = useState(exercises);
@@ -179,11 +187,17 @@ export function WorkoutSession({
     setVideoError(null);
   }
 
-  const setNumber = editingSetNumber ?? (current?.sets.length ?? 0) + 1;
-  const isLastPrescribed =
-    !editingSetNumber &&
-    current?.prescribedSets != null &&
-    setNumber >= current.prescribedSets;
+  // In best mode the form always represents "the best set" — set_number is
+  // pinned to 1 so a re-submit upserts the same row, and submitting always
+  // counts as the final set so the exercise advances.
+  const setNumber = bestMode
+    ? 1
+    : editingSetNumber ?? (current?.sets.length ?? 0) + 1;
+  const isLastPrescribed = bestMode
+    ? true
+    : !editingSetNumber &&
+      current?.prescribedSets != null &&
+      setNumber >= current.prescribedSets;
 
   async function submitSet() {
     if (!current) return;
@@ -214,7 +228,11 @@ export function WorkoutSession({
         return;
       }
 
-      // Update local state.
+      // Update local state. The DB upserts on (exercise_log_id, set_number),
+      // so the source of truth for replace-vs-append is whether a set with
+      // this set_number already exists locally. That handles three cases
+      // uniformly: explicit edit (editingSetNumber set), best-mode resubmit
+      // (set_number always 1, may already exist), and a fresh new set.
       const wasEditing = editingSetNumber != null;
       setState((prev) => {
         const next = prev.map((e) => {
@@ -229,7 +247,8 @@ export function WorkoutSession({
             videoUrl: (body.videoUrl as string | null) ?? null,
             notes: (body.notes as string | null) ?? null,
           };
-          const sets = wasEditing
+          const exists = e.sets.some((s) => s.setNumber === setNumber);
+          const sets = exists
             ? e.sets.map((s) => (s.setNumber === setNumber ? newSet : s))
             : [...e.sets, newSet];
           return {
@@ -574,7 +593,7 @@ export function WorkoutSession({
       {current.sets.length > 0 && (
         <section className="mt-6 rounded-2xl border border-border bg-surface/40 px-3 py-2.5">
           <p className="text-[10px] uppercase tracking-[0.18em] text-faint mb-1.5 px-1">
-            Logged
+            {bestMode ? 'Best set' : 'Logged'}
           </p>
           <ul className="space-y-1">
             {[...current.sets]
@@ -594,9 +613,11 @@ export function WorkoutSession({
                           : 'hover:bg-surface-2 text-text'
                       }`}
                     >
-                      <span className="text-faint tabular-nums text-xs">
-                        {s.setNumber.toString().padStart(2, '0')}
-                      </span>
+                      {!bestMode && (
+                        <span className="text-faint tabular-nums text-xs">
+                          {s.setNumber.toString().padStart(2, '0')}
+                        </span>
+                      )}
                       <span className="font-medium tabular-nums">
                         {summarizeSet(s, current.isCardio)}
                       </span>
@@ -614,13 +635,21 @@ export function WorkoutSession({
       <section className="mt-6 space-y-4">
         <div className="flex items-baseline justify-between">
           <h2 className="text-lg font-semibold">
-            {editingSetNumber != null ? 'Edit set ' : 'Set '}
-            {setNumber}
-            {current.prescribedSets && editingSetNumber == null ? (
-              <span className="text-faint text-sm font-normal ml-1.5">
-                of {current.prescribedSets}
-              </span>
-            ) : null}
+            {bestMode
+              ? editingSetNumber != null
+                ? 'Edit best set'
+                : 'Best set'
+              : (
+                <>
+                  {editingSetNumber != null ? 'Edit set ' : 'Set '}
+                  {setNumber}
+                  {current.prescribedSets && editingSetNumber == null ? (
+                    <span className="text-faint text-sm font-normal ml-1.5">
+                      of {current.prescribedSets}
+                    </span>
+                  ) : null}
+                </>
+              )}
           </h2>
           {editingSetNumber != null && (
             <button
@@ -692,14 +721,18 @@ export function WorkoutSession({
           disabled={submitting || isFormEmpty(current.isCardio, weight, reps, cardioMin)}
           className="w-full h-14 rounded-2xl bg-primary hover:bg-primary-hi active:bg-primary-press text-bg text-base font-semibold disabled:opacity-40 disabled:shadow-none transition-all shadow-[0_10px_40px_-12px_rgba(34,197,94,0.7)]"
         >
-          {editingSetNumber != null
-            ? `Save set ${setNumber}`
-            : isLastPrescribed
-              ? 'Log final set'
-              : `Log set ${setNumber}`}
+          {bestMode
+            ? editingSetNumber != null
+              ? 'Save best set'
+              : 'Log best set'
+            : editingSetNumber != null
+              ? `Save set ${setNumber}`
+              : isLastPrescribed
+                ? 'Log final set'
+                : `Log set ${setNumber}`}
         </button>
 
-        {isLastPrescribed && (
+        {!bestMode && isLastPrescribed && (
           <button
             type="button"
             onClick={addExtraSet}
@@ -709,7 +742,7 @@ export function WorkoutSession({
           </button>
         )}
 
-        {current.sets.length > 0 && !isLastPrescribed && (
+        {!bestMode && current.sets.length > 0 && !isLastPrescribed && (
           <button
             type="button"
             onClick={moveToNextExercise}

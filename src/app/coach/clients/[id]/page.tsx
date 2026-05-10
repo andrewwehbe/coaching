@@ -41,7 +41,7 @@ export default async function ClientDetailPage(props: { params: Params }) {
     supa
       .from('clients')
       .select(
-        'id, name, active, weekly_day_target, body_weight_freq, photo_check_in_enabled, meal_plan_enabled, created_at, deactivated_at',
+        'id, name, active, weekly_day_target, body_weight_freq, photo_check_in_enabled, meal_plan_enabled, log_mode, created_at, deactivated_at',
       )
       .eq('id', id)
       .maybeSingle(),
@@ -130,6 +130,9 @@ export default async function ClientDetailPage(props: { params: Params }) {
             {client.meal_plan_enabled && (
               <Chip className="border-border bg-surface/40 text-muted">Meals</Chip>
             )}
+            {client.log_mode === 'best' && (
+              <Chip className="border-accent/40 bg-accent/8 text-accent">Best-set log</Chip>
+            )}
           </div>
         }
       />
@@ -157,6 +160,7 @@ export default async function ClientDetailPage(props: { params: Params }) {
         clientId={client.id}
         active={client.active}
         currentWeekIsDeload={currentWeekIsDeload}
+        logMode={client.log_mode === 'best' ? 'best' : 'sets'}
       />
 
       <SkipPainSection rows={skipPain ?? []} />
