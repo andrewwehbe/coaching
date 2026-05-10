@@ -61,6 +61,12 @@ export default async function TodayPage() {
         <>
           <NotificationsToggle />
           <Link
+            href="/trends"
+            className="text-[10px] uppercase tracking-[0.22em] text-muted hover:text-text transition-colors"
+          >
+            Trends
+          </Link>
+          <Link
             href="/check-in"
             className="text-[10px] uppercase tracking-[0.22em] text-muted hover:text-text transition-colors"
           >
