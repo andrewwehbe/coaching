@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { readSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { parsePrescription } from '@/lib/sheet-parser';
-import { nameKeyFor } from '@/lib/exercise-name';
+import { nameKeyFor, normalize } from '@/lib/exercise-name';
 import { sendPushToClient } from '@/lib/push';
 import { log } from '@/lib/log';
 
@@ -92,6 +92,12 @@ export async function POST(req: Request, ctx: { params: Params }) {
   // (day_id, position) unique constraint with a 409.
   const savedDays: Array<{ id: string; exercises: Array<{ id: string }> }> = [];
 
+  // When the same exercise appears on multiple days, reuse the first day's
+  // name_key on every later occurrence so bests collate across days. Without
+  // this an A/B split tracks each day's "Hack squat" independently and the
+  // client sees "Log first set" on Day 4 even after logging Day 2.
+  const nameToFirstKey = new Map<string, string>();
+
   for (const [di, day] of payload.days.entries()) {
     const dayIndex = di + 1;
     let dayId = day.id;
@@ -133,7 +139,12 @@ export async function POST(req: Request, ctx: { params: Params }) {
     for (const [ei, ex] of day.exercises.entries()) {
       const position = ei + 1;
       const rx = parsePrescription(ex.prescription_raw)!;
-      const newNameKey = nameKeyFor(dayIndex, ex.name);
+      const dedupeKey = normalize(ex.name);
+      let newNameKey = nameToFirstKey.get(dedupeKey);
+      if (!newNameKey) {
+        newNameKey = nameKeyFor(dayIndex, ex.name);
+        nameToFirstKey.set(dedupeKey, newNameKey);
+      }
 
       if (ex.id && existingExByName.has(ex.id)) {
         incomingExerciseIds.add(ex.id);

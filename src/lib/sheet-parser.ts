@@ -87,6 +87,13 @@ export function parseSheet(file: ArrayBuffer | Buffer): ParseResult {
   let currentDay: ParsedDay | null = null;
   let currentDayRow = -1;
   const seenInDay = new Set<string>();
+  // When the same (normalized) exercise name appears on multiple days,
+  // reuse the first day's name_key on every later occurrence so bests
+  // + plateau analysis collate across days. Without this, A/B splits
+  // where the same exercise lives on Day 2 + Day 4 (or Day 1 + Day 3)
+  // tracked their bests independently — the cue on the second day
+  // showed "Log first set" even though the client had logged it before.
+  const nameToFirstKey = new Map<string, string>();
 
   // Some sheets put the first day label in col A of the header row alongside
   // the "Week N" headers (e.g. "Lower posterior + upper anterior"). If row 0's
@@ -169,9 +176,15 @@ export function parseSheet(file: ArrayBuffer | Buffer): ParseResult {
     }
     seenInDay.add(dedupeKey);
     // Scope name_key by 1-based day_index so the same exercise on different
-    // days tracks bests + plateau independently.
+    // days tracks bests + plateau independently — UNLESS the same exercise
+    // already appeared on an earlier day, in which case we reuse that day's
+    // key so bests collate.
     const dayIndex = days.length; // 1-based: this day was just pushed (or about to be)
-    const key = nameKeyFor(dayIndex, a);
+    let key = nameToFirstKey.get(dedupeKey);
+    if (!key) {
+      key = nameKeyFor(dayIndex, a);
+      nameToFirstKey.set(dedupeKey, key);
+    }
 
     currentDay.exercises.push({
       name: a,
