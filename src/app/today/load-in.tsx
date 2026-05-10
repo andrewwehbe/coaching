@@ -37,12 +37,14 @@ export function LoadInView({
   days,
   suggested,
   threeInARowWarning,
+  isDeloadWeek,
   rightControls,
 }: {
   greetingName: string;
   days: Day[];
   suggested: Suggested;
   threeInARowWarning?: boolean;
+  isDeloadWeek?: boolean;
   rightControls?: React.ReactNode;
 }) {
   const router = useRouter();
@@ -138,9 +140,15 @@ export function LoadInView({
           {rightControls && <div className="loadin-controls">{rightControls}</div>}
         </div>
         <div className="loadin-week">
-          <p>This week</p>
+          <p>{isDeloadWeek ? 'Deload week' : 'This week'}</p>
         </div>
       </div>
+
+      {isDeloadWeek && (
+        <div className="loadin-warn" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>
+          <p>Deload · drop ~25% load, keep reps the same, stop ~3 reps shy of failure</p>
+        </div>
+      )}
 
       {threeInARowWarning && (
         <div className="loadin-warn">

@@ -33,16 +33,27 @@ export async function POST(req: Request) {
   }
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const weekStartIso = formatISO(weekStart, { representation: 'date' });
 
   // Resume in-progress workout for the same day this week if one exists.
-  const { data: existing } = await supa
-    .from('workouts')
-    .select('id, completed_at')
-    .eq('client_id', user.id)
-    .eq('day_id', parsed.data.dayId)
-    .gte('week_start', formatISO(weekStart, { representation: 'date' }))
-    .order('started_at', { ascending: false })
-    .limit(1);
+  // In parallel, look up whether the coach has marked this week as deload
+  // so we can stamp it on the new workout row.
+  const [{ data: existing }, { data: deload }] = await Promise.all([
+    supa
+      .from('workouts')
+      .select('id, completed_at')
+      .eq('client_id', user.id)
+      .eq('day_id', parsed.data.dayId)
+      .gte('week_start', weekStartIso)
+      .order('started_at', { ascending: false })
+      .limit(1),
+    supa
+      .from('client_deload_weeks')
+      .select('client_id')
+      .eq('client_id', user.id)
+      .eq('week_start', weekStartIso)
+      .maybeSingle(),
+  ]);
 
   const open = existing?.find((w) => !w.completed_at);
   if (open) {
@@ -54,7 +65,8 @@ export async function POST(req: Request) {
     .insert({
       client_id: user.id,
       day_id: parsed.data.dayId,
-      week_start: formatISO(weekStart, { representation: 'date' }),
+      week_start: weekStartIso,
+      is_deload: !!deload,
     })
     .select('id')
     .single();

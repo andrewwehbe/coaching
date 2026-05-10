@@ -56,6 +56,7 @@ export default async function TodayPage() {
           : null
       }
       threeInARowWarning={schedule.threeInARowWarning}
+      isDeloadWeek={schedule.isDeloadWeek}
       rightControls={
         <>
           <NotificationsToggle />

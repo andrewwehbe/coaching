@@ -11,11 +11,12 @@ type Params = Promise<{ id: string }>;
 const Body = z.object({ deload: z.boolean() });
 
 /**
- * Toggles the current week as a deload for the client. We mark every workout
- * with this client + week_start = current Monday. If none exist yet, we
- * create a marker workout against day_index=1 of the active program so the
- * client UI can pick it up — but here we just flip flags on existing rows
- * and remember the choice via audit_log so M2 can render it.
+ * Toggles the current week as a deload for the client. Two halves:
+ *   1. client_deload_weeks holds the canonical mark — also picked up by
+ *      future workouts started this week (via /api/client/workout/start)
+ *      and by /today's deload-week banner.
+ *   2. Existing workouts for the week have their is_deload flag flipped
+ *      so the coach session view + history reflect the change.
  */
 export async function POST(req: Request, { params }: { params: Params }) {
   const guard = await requireCoachApi();
@@ -32,14 +33,35 @@ export async function POST(req: Request, { params }: { params: Params }) {
     representation: 'date',
   });
 
-  const { error } = await supa
+  if (parsed.data.deload) {
+    const { error: markErr } = await supa
+      .from('client_deload_weeks')
+      .upsert(
+        { client_id: id, week_start: weekStart, marked_by: guard.user.id },
+        { onConflict: 'client_id,week_start' },
+      );
+    if (markErr) {
+      return NextResponse.json({ error: 'Failed to mark deload' }, { status: 500 });
+    }
+  } else {
+    const { error: unmarkErr } = await supa
+      .from('client_deload_weeks')
+      .delete()
+      .eq('client_id', id)
+      .eq('week_start', weekStart);
+    if (unmarkErr) {
+      return NextResponse.json({ error: 'Failed to unmark deload' }, { status: 500 });
+    }
+  }
+
+  // Mirror the flag onto any existing workouts so coach views stay in sync.
+  const { error: flipErr } = await supa
     .from('workouts')
     .update({ is_deload: parsed.data.deload })
     .eq('client_id', id)
     .eq('week_start', weekStart);
-
-  if (error) {
-    return NextResponse.json({ error: 'Failed to mark deload' }, { status: 500 });
+  if (flipErr) {
+    return NextResponse.json({ error: 'Failed to flip workout flags' }, { status: 500 });
   }
 
   await audit({

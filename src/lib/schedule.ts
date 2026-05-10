@@ -20,6 +20,8 @@ export type TodaySchedule = {
   suggested: ScheduledDay | null;
   /** True if the client has logged sessions on each of the prior 2 days. */
   threeInARowWarning: boolean;
+  /** True if coach marked this week as a deload for this client. */
+  isDeloadWeek: boolean;
 };
 
 /**
@@ -38,10 +40,13 @@ export async function buildTodaySchedule(clientId: string): Promise<TodaySchedul
   const since = new Date(now);
   since.setDate(since.getDate() - 2);
 
+  const weekStartIso = formatISO(weekStart, { representation: 'date' });
+
   const [
     { data: program },
     { data: thisWeek },
     { data: recent },
+    { data: deloadRow },
   ] = await Promise.all([
     supa
       .from('programs')
@@ -55,13 +60,21 @@ export async function buildTodaySchedule(clientId: string): Promise<TodaySchedul
       .from('workouts')
       .select('id, day_id, completed_at, started_at, is_missed')
       .eq('client_id', clientId)
-      .gte('week_start', formatISO(weekStart, { representation: 'date' })),
+      .gte('week_start', weekStartIso),
     supa
       .from('workouts')
       .select('started_at, completed_at')
       .eq('client_id', clientId)
       .gte('started_at', since.toISOString()),
+    supa
+      .from('client_deload_weeks')
+      .select('client_id')
+      .eq('client_id', clientId)
+      .eq('week_start', weekStartIso)
+      .maybeSingle(),
   ]);
+
+  const isDeloadWeek = !!deloadRow;
 
   if (!program) {
     return {
@@ -70,6 +83,7 @@ export async function buildTodaySchedule(clientId: string): Promise<TodaySchedul
       days: [],
       suggested: null,
       threeInARowWarning: false,
+      isDeloadWeek,
     };
   }
 
@@ -126,5 +140,6 @@ export async function buildTodaySchedule(clientId: string): Promise<TodaySchedul
     days: scheduled,
     suggested,
     threeInARowWarning,
+    isDeloadWeek,
   };
 }

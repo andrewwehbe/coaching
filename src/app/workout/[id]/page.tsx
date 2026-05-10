@@ -29,7 +29,7 @@ export default async function WorkoutPage(props: { params: Params }) {
 
   const { data: workout } = await supa
     .from('workouts')
-    .select('id, day_id, completed_at, client_id')
+    .select('id, day_id, completed_at, client_id, is_deload')
     .eq('id', id)
     .maybeSingle();
 
@@ -108,6 +108,7 @@ export default async function WorkoutPage(props: { params: Params }) {
       workoutId={workout.id}
       dayLabel={day?.label ?? 'Workout'}
       completed={!!workout.completed_at}
+      isDeload={!!workout.is_deload}
       exercises={states}
     />
   );

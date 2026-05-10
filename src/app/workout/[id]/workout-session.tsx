@@ -51,11 +51,13 @@ export function WorkoutSession({
   workoutId,
   dayLabel,
   completed,
+  isDeload,
   exercises,
 }: {
   workoutId: string;
   dayLabel: string;
   completed: boolean;
+  isDeload?: boolean;
   exercises: ExerciseState[];
 }) {
   const router = useRouter();
@@ -544,6 +546,18 @@ export function WorkoutSession({
       <p className="text-sm text-muted mb-5">{current.prescriptionRaw ?? '—'}</p>
 
       <CueDisplay cue={current.cue} />
+
+      {isDeload && (
+        <div className="mt-4 rounded-2xl border border-accent/40 bg-accent/8 px-4 py-3 text-sm">
+          <p className="text-xs uppercase tracking-[0.18em] text-accent mb-1 font-medium">
+            Deload week
+          </p>
+          <p className="text-text">
+            Drop ~25% off your usual load. Keep the prescribed reps, but stop
+            ~3 reps shy of failure on every set. Don&rsquo;t chase a PR today.
+          </p>
+        </div>
+      )}
 
       {isFirstSetOverall && (
         <div className="mt-5 rounded-2xl border border-warn/35 bg-warn/10 p-4 text-sm text-warn">
