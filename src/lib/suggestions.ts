@@ -9,6 +9,14 @@ import {
   type ExerciseLogRow,
 } from './plateau';
 import { matchCatalogForMany, type CatalogEntry } from './catalog';
+import {
+  SUGGEST_WATCH_MIN as WATCH_MIN,
+  SUGGEST_ADJUST_MIN as ADJUST_MIN,
+  SUGGEST_SWAP_MIN as SWAP_MIN,
+  SUGGEST_SWAP_MIN_PROGRAM_WEEK as SWAP_MIN_PROGRAM_WEEK,
+  ADHERENCE_LOOKBACK_WEEKS,
+  ADHERENCE_MIN_DAYS,
+} from './config';
 
 /**
  * Per-client suggestions for the weekly report. Implements the staged
@@ -32,12 +40,6 @@ import { matchCatalogForMany, type CatalogEntry } from './catalog';
  * applying them needs the curated exercise list (coming separately).
  */
 
-const WATCH_MIN = 2;
-const ADJUST_MIN = 3;
-const SWAP_MIN = 4;
-const SWAP_MIN_PROGRAM_WEEK = 6;
-const ADHERENCE_LOOKBACK_WEEKS = 2;
-const ADHERENCE_MIN_DAYS = 4;
 const PAIN_REGEX = /pain|hurt|injur|tweak|sharp|sore.*bad/i;
 
 export type SuggestionApplyKind = 'add_set' | 'archive_day';

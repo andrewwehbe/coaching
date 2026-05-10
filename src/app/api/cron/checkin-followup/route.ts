@@ -23,6 +23,7 @@ import { startOfWeek, formatISO, subWeeks } from 'date-fns';
 import { db } from '@/lib/supabase';
 import { insertAlert } from '@/lib/notify';
 import { sendPushToClient } from '@/lib/push';
+import { verifyCronSecret } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,16 +35,8 @@ export async function GET(req: Request) {
 }
 
 async function handle(req: Request): Promise<NextResponse> {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 500 });
-  }
-  const headerSecret = req.headers.get('x-cron-secret');
-  const auth = req.headers.get('authorization') ?? '';
-  const bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : null;
-  if (headerSecret !== secret && bearer !== secret) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const unauth = verifyCronSecret(req);
+  if (unauth) return unauth;
 
   const supa = db();
   const now = new Date();

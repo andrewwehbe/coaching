@@ -3,6 +3,7 @@ import 'server-only';
 import webpush from 'web-push';
 
 import { db } from './supabase';
+import { log } from './log';
 
 let configured = false;
 function configure(): boolean {
@@ -56,6 +57,9 @@ async function sendToUser(
         const status = (err as { statusCode?: number }).statusCode;
         if (status === 404 || status === 410) {
           await supa.from('devices').delete().eq('id', d.id);
+          log.info('push.subscription.dropped', { deviceId: d.id, status });
+        } else {
+          log.warn('push.send.failed', { deviceId: d.id, status, userType, userId });
         }
       }
     })

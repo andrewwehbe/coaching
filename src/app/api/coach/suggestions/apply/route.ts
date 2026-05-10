@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { requireCoachApi } from '@/lib/coach-guard';
 import { db } from '@/lib/supabase';
 import { sendPushToClient } from '@/lib/push';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +50,15 @@ export async function POST(req: Request) {
       if (r.error) return NextResponse.json({ error: r.error.message }, { status: 500 });
     }
 
+    await supa.from('audit_log').insert({
+      actor_type: 'coach',
+      actor_id: guard.user.id,
+      action: 'suggestion.add_set',
+      target_type: 'client',
+      target_id: body.clientId,
+      details: { exercise_ids: ids, target_name: rows?.[0]?.name ?? null },
+    });
+
     void sendPushToClient(body.clientId, {
       title: 'Program updated',
       body: `Coach added a set to ${rows?.[0]?.name ?? 'an exercise'}.`,
@@ -70,6 +80,15 @@ export async function POST(req: Request) {
       .eq('day_id', body.dayId)
       .is('archived_at', null);
     if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
+
+    await supa.from('audit_log').insert({
+      actor_type: 'coach',
+      actor_id: guard.user.id,
+      action: 'suggestion.archive_day',
+      target_type: 'day',
+      target_id: body.dayId,
+      details: { client_id: body.clientId },
+    });
 
     void sendPushToClient(body.clientId, {
       title: 'Program updated',
@@ -130,20 +149,49 @@ export async function POST(req: Request) {
       };
     });
 
-    // Archive the originals; insert replacements. Old logs stay attached
-    // to the archived rows so history is preserved.
-    const { error: arErr } = await supa
-      .from('exercises')
-      .update({ archived_at: new Date().toISOString() })
-      .in('id', ids);
-    if (arErr) return NextResponse.json({ error: arErr.message }, { status: 500 });
+    // Archive the originals; insert replacements at the same positions.
+    // The (day_id, position) unique constraint forces archived rows to
+    // vacate their slot — bump position by +1000 so the replacement can
+    // claim the original slot. Old logs stay attached to the archived
+    // rows so history is preserved.
+    const archivedAt = new Date().toISOString();
+    const archiveResults = await Promise.all(
+      rows.map((r) =>
+        supa
+          .from('exercises')
+          .update({ archived_at: archivedAt, position: r.position + 1000 })
+          .eq('id', r.id),
+      ),
+    );
+    for (const r of archiveResults) {
+      if (r.error) return NextResponse.json({ error: r.error.message }, { status: 500 });
+    }
 
     const { error: insErr } = await supa.from('exercises').insert(newRows);
     if (insErr) {
-      // best-effort revert if insert fails
-      await supa.from('exercises').update({ archived_at: null }).in('id', ids);
+      // best-effort revert: restore both archived_at and position.
+      await Promise.all(
+        rows.map((r) =>
+          supa
+            .from('exercises')
+            .update({ archived_at: null, position: r.position })
+            .eq('id', r.id),
+        ),
+      );
       return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
+
+    await supa.from('audit_log').insert({
+      actor_type: 'coach',
+      actor_id: guard.user.id,
+      action: 'suggestion.swap_exercise',
+      target_type: 'client',
+      target_id: body.clientId,
+      details: {
+        archived_exercise_ids: ids,
+        replacement_name: body.replacementName,
+      },
+    });
 
     void sendPushToClient(body.clientId, {
       title: 'Program updated',
@@ -154,5 +202,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, replaced: rows.length });
   }
 
+  log.warn('suggestion.unknown_kind', { kind: (body as { kind: string }).kind });
   return NextResponse.json({ error: 'Unknown kind' }, { status: 400 });
 }

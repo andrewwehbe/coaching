@@ -6,7 +6,8 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "test": "tsx tests/lib.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",

@@ -15,6 +15,9 @@ import { startOfWeek, formatISO } from 'date-fns';
 
 import { db } from '@/lib/supabase';
 import { sendPushToCoach, sendPushToClient } from '@/lib/push';
+import { verifyCronSecret } from '@/lib/cron-auth';
+import { REMINDER_DEDUP_HOURS } from '@/lib/config';
+import { log } from '@/lib/log';
 import {
   buildExposureHistory,
   countConsecutiveStalled,
@@ -42,22 +45,8 @@ export async function GET(req: Request) {
 }
 
 async function handle(req: Request): Promise<NextResponse> {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return NextResponse.json(
-      { error: 'CRON_SECRET not configured' },
-      { status: 500 }
-    );
-  }
-  // Accept either:
-  //   - x-cron-secret: <CRON_SECRET>           (manual / curl)
-  //   - Authorization: Bearer <CRON_SECRET>    (Vercel Cron auto-sends this)
-  const headerSecret = req.headers.get('x-cron-secret');
-  const auth = req.headers.get('authorization') ?? '';
-  const bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : null;
-  if (headerSecret !== secret && bearer !== secret) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const unauth = verifyCronSecret(req);
+  if (unauth) return unauth;
 
   const supa = db();
 
@@ -69,26 +58,40 @@ async function handle(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: clientsErr.message }, { status: 500 });
   }
 
-  const summary: {
-    client_id: string;
-    exercises_processed: number;
-    escalations: number;
-    swap_proposals_opened: number;
-    reminders_sent: number;
-  }[] = [];
-
-  for (const client of clients ?? []) {
-    const result = await analyzeClient(client.id);
-    const reminders = await runReminders({
-      clientId: client.id,
-      name: client.name,
-      weeklyDayTarget: client.weekly_day_target,
-      bodyWeightFreq: client.body_weight_freq,
-      hasCheckIns:
-        client.body_weight_freq !== 'none' || client.photo_check_in_enabled === true,
-    });
-    summary.push({ client_id: client.id, ...result, reminders_sent: reminders });
-  }
+  // Parallelize per-client work. Each client's analysis + reminders is
+  // independent (no shared state), so wall-clock latency drops from O(N)
+  // sequential to O(1) at the cost of more concurrent DB connections —
+  // Supabase handles ~50 connections per project comfortably. With Promise.all
+  // a single failure would short-circuit the rest, so we wrap each call.
+  const summary = await Promise.all(
+    (clients ?? []).map(async (client) => {
+      try {
+        const [result, reminders] = await Promise.all([
+          analyzeClient(client.id),
+          runReminders({
+            clientId: client.id,
+            name: client.name,
+            weeklyDayTarget: client.weekly_day_target,
+            bodyWeightFreq: client.body_weight_freq,
+            hasCheckIns:
+              client.body_weight_freq !== 'none' ||
+              client.photo_check_in_enabled === true,
+          }),
+        ]);
+        return { client_id: client.id, ...result, reminders_sent: reminders };
+      } catch (err) {
+        log.error('cron.daily.client_failed', err, { clientId: client.id });
+        return {
+          client_id: client.id,
+          exercises_processed: 0,
+          escalations: 0,
+          swap_proposals_opened: 0,
+          reminders_sent: 0,
+          error: true,
+        };
+      }
+    }),
+  );
 
   return NextResponse.json({ ok: true, clients: summary.length, summary });
 }
@@ -113,7 +116,7 @@ async function runReminders(args: {
   const dow = now.getDay(); // 0=Sun, 6=Sat
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });
   const weekStartIso = formatISO(weekStart, { representation: 'date' });
-  const sinceIso = new Date(Date.now() - 20 * 3600 * 1000).toISOString();
+  const sinceIso = new Date(Date.now() - REMINDER_DEDUP_HOURS * 3600 * 1000).toISOString();
 
   let sent = 0;
 

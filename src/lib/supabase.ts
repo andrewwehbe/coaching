@@ -2,6 +2,8 @@ import 'server-only';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
+import { SIGNED_URL_TTL_SECONDS } from './config';
+
 let _client: SupabaseClient | null = null;
 
 /**
@@ -22,10 +24,6 @@ export function db(): SupabaseClient {
   });
   return _client;
 }
-
-/** Default signed-URL TTL: 1 hour. Long enough to view, short enough that
- * a leaked link is essentially worthless. */
-const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 /** Sign a single storage path. Returns null if the path is missing or signing fails. */
 export async function signMediaUrl(

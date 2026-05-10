@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@/lib/supabase';
 import { loadOpenClientWorkout } from '@/lib/workout-guard';
 import { upsertBestEffortFromSet } from '@/lib/best-effort';
+import { log as logger } from '@/lib/log';
 
 const Body = z.object({
   exerciseId: z.string().uuid(),
@@ -28,7 +29,10 @@ export async function POST(req: Request, props: { params: Params }) {
 
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    console.error('set: invalid payload', parsed.error.flatten());
+    logger.warn('set.invalid_payload', {
+      workoutId: id,
+      issues: parsed.error.flatten(),
+    });
     return NextResponse.json({ error: 'Invalid set payload' }, { status: 400 });
   }
 

@@ -8,6 +8,8 @@
  * the prior best.
  */
 
+import { STALL_WATCH_MIN, STALL_ADJUST_MIN, STALL_SWAP_MIN } from './config';
+
 export type SetRow = {
   weight: number | null;
   reps: number | null;
@@ -91,9 +93,9 @@ export function countConsecutiveStalled(history: Exposure[]): number {
 }
 
 export function stageFor(consecutiveStalled: number): Stage {
-  if (consecutiveStalled >= 8) return 'swap_candidate';
-  if (consecutiveStalled >= 6) return 'adjust';
-  if (consecutiveStalled >= 4) return 'watch';
+  if (consecutiveStalled >= STALL_SWAP_MIN) return 'swap_candidate';
+  if (consecutiveStalled >= STALL_ADJUST_MIN) return 'adjust';
+  if (consecutiveStalled >= STALL_WATCH_MIN) return 'watch';
   return 'none';
 }
 

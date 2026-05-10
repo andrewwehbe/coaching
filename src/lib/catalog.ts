@@ -45,6 +45,51 @@ export type CatalogMatch = {
   alternatives: CatalogEntry[];
 };
 
+// The catalog is a curated, slow-changing list (one row per exercise,
+// inserted by migration). Reading it once per server instance and caching
+// in module memory keeps suggestion-building cheap. TTL is generous —
+// updates land via migration, so a stale read for a few minutes is fine.
+const CATALOG_TTL_MS = 5 * 60_000;
+let _catalogAt = 0;
+let _catalog: CatalogEntry[] | null = null;
+let _byGroup: Map<string, CatalogEntry[]> | null = null;
+
+async function loadCatalog(): Promise<{ all: CatalogEntry[]; byGroup: Map<string, CatalogEntry[]> }> {
+  const fresh = _catalog && Date.now() - _catalogAt < CATALOG_TTL_MS;
+  if (fresh && _catalog && _byGroup) return { all: _catalog, byGroup: _byGroup };
+
+  const supa = db();
+  const { data: all } = await supa
+    .from('catalog_exercises')
+    .select('id, name, group_key');
+
+  const list = (all as CatalogEntry[] | null) ?? [];
+  const byGroup = new Map<string, CatalogEntry[]>();
+  for (const c of list) {
+    const arr = byGroup.get(c.group_key) ?? [];
+    arr.push(c);
+    byGroup.set(c.group_key, arr);
+  }
+  _catalog = list;
+  _byGroup = byGroup;
+  _catalogAt = Date.now();
+  return { all: list, byGroup };
+}
+
+function bestMatch(name: string, all: CatalogEntry[]): CatalogEntry | null {
+  const target = bag(name);
+  let best: CatalogEntry | null = null;
+  let bestScore = 0;
+  for (const c of all) {
+    const score = jaccard(target, bag(c.name));
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  return best && bestScore >= 0.34 ? best : null;
+}
+
 /**
  * Best-effort: return the catalog entry whose name is closest to the
  * given exercise. If the best Jaccard score is < 0.34, treat as no
@@ -52,27 +97,13 @@ export type CatalogMatch = {
  * Apply will be hidden).
  */
 export async function matchCatalogFor(exerciseName: string): Promise<CatalogMatch> {
-  const supa = db();
-  const { data: all } = await supa
-    .from('catalog_exercises')
-    .select('id, name, group_key');
-  if (!all || all.length === 0) return { match: null, alternatives: [] };
+  const { all, byGroup } = await loadCatalog();
+  if (all.length === 0) return { match: null, alternatives: [] };
 
-  const target = bag(exerciseName);
-  let best: CatalogEntry | null = null;
-  let bestScore = 0;
-  for (const c of all) {
-    const score = jaccard(target, bag(c.name));
-    if (score > bestScore) {
-      bestScore = score;
-      best = c as CatalogEntry;
-    }
-  }
-  if (!best || bestScore < 0.34) return { match: null, alternatives: [] };
+  const best = bestMatch(exerciseName, all);
+  if (!best) return { match: null, alternatives: [] };
 
-  const alternatives = (all as CatalogEntry[]).filter(
-    (c) => c.group_key === best!.group_key && c.name !== best!.name,
-  );
+  const alternatives = (byGroup.get(best.group_key) ?? []).filter((c) => c.name !== best.name);
   return { match: best, alternatives };
 }
 
@@ -80,41 +111,22 @@ export async function matchCatalogFor(exerciseName: string): Promise<CatalogMatc
 export async function matchCatalogForMany(
   names: string[],
 ): Promise<Map<string, CatalogMatch>> {
-  const supa = db();
   const out = new Map<string, CatalogMatch>();
   if (names.length === 0) return out;
 
-  const { data: all } = await supa
-    .from('catalog_exercises')
-    .select('id, name, group_key');
-  if (!all || all.length === 0) {
+  const { all, byGroup } = await loadCatalog();
+  if (all.length === 0) {
     for (const n of names) out.set(n, { match: null, alternatives: [] });
     return out;
   }
 
-  const byGroup = new Map<string, CatalogEntry[]>();
-  for (const c of all as CatalogEntry[]) {
-    const arr = byGroup.get(c.group_key) ?? [];
-    arr.push(c);
-    byGroup.set(c.group_key, arr);
-  }
-
   for (const name of names) {
-    const target = bag(name);
-    let best: CatalogEntry | null = null;
-    let bestScore = 0;
-    for (const c of all as CatalogEntry[]) {
-      const score = jaccard(target, bag(c.name));
-      if (score > bestScore) {
-        bestScore = score;
-        best = c;
-      }
-    }
-    if (!best || bestScore < 0.34) {
+    const best = bestMatch(name, all);
+    if (!best) {
       out.set(name, { match: null, alternatives: [] });
       continue;
     }
-    const alternatives = (byGroup.get(best.group_key) ?? []).filter((c) => c.name !== best!.name);
+    const alternatives = (byGroup.get(best.group_key) ?? []).filter((c) => c.name !== best.name);
     out.set(name, { match: best, alternatives });
   }
   return out;

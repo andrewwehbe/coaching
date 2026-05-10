@@ -5,12 +5,15 @@ import { cookies, headers } from 'next/headers';
 import bcrypt from 'bcryptjs';
 
 import { db } from './supabase';
+import {
+  SESSION_TTL_DAYS,
+  MAX_PIN_ATTEMPTS,
+  RATE_LIMIT_15M,
+  RATE_LIMIT_24H,
+} from './config';
 
 export const SESSION_COOKIE = 'coaching_session';
-export const SESSION_TTL_DAYS = 365;
-export const MAX_PIN_ATTEMPTS = 10;
-export const RATE_LIMIT_15M = 5;
-export const RATE_LIMIT_24H = 20;
+export { SESSION_TTL_DAYS, MAX_PIN_ATTEMPTS, RATE_LIMIT_15M, RATE_LIMIT_24H };
 
 export type SessionUser =
   | { type: 'coach'; id: string; name: string }
@@ -159,32 +162,12 @@ export async function attemptPinLogin(
     }
   }
 
-  // No match. Bump attempts on every account that's not yet locked. (Spreads
-  // attack cost; eventually locks any account being targeted.)
-  // NOTE: alternative is to track per-IP only — this approach also catches
-  // distributed brute force on a single account.
-  const lockoutUntil = new Date(now.getTime() + 60 * 60_000); // 1 hour
-  for (const c of coaches ?? []) {
-    const next = (c.pin_attempts ?? 0) + 1;
-    await supa
-      .from('coaches')
-      .update({
-        pin_attempts: next,
-        pin_locked_until: next >= MAX_PIN_ATTEMPTS ? lockoutUntil.toISOString() : c.pin_locked_until,
-      })
-      .eq('id', c.id);
-  }
-  for (const c of clients ?? []) {
-    const next = (c.pin_attempts ?? 0) + 1;
-    await supa
-      .from('clients')
-      .update({
-        pin_attempts: next,
-        pin_locked_until: next >= MAX_PIN_ATTEMPTS ? lockoutUntil.toISOString() : c.pin_locked_until,
-      })
-      .eq('id', c.id);
-  }
-
+  // No match. Brute-force protection is the IP rate-limit (RATE_LIMIT_15M /
+  // RATE_LIMIT_24H, see checkAndBumpRateLimit). We deliberately do NOT bump
+  // per-account counters here: with PIN-only auth we can't tell which
+  // account was being targeted, so bumping every account on every wrong
+  // PIN locks out every legitimate user simultaneously after MAX_PIN_ATTEMPTS
+  // wrong guesses — a denial-of-service from any visitor.
   return { ok: false, reason: 'invalid' };
 }
 

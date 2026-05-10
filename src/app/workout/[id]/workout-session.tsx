@@ -9,6 +9,7 @@ import { CueDisplay } from './cue-display';
 import { RestTimer } from '@/components/rest-timer';
 import { OfflineBanner } from '@/components/offline-banner';
 import { enqueueAndSend, flushQueue, pendingCount } from '@/lib/offline-queue';
+import { MAX_VIDEO_BYTES } from '@/lib/config';
 
 export type LoggedSet = {
   setNumber: number;
@@ -314,8 +315,8 @@ export function WorkoutSession({
     setVideoError(null);
     setVideoProgress(0);
     try {
-      if (file.size > 25 * 1024 * 1024) {
-        setVideoError('Max 25 MB.');
+      if (file.size > MAX_VIDEO_BYTES) {
+        setVideoError(`Max ${Math.round(MAX_VIDEO_BYTES / (1024 * 1024))} MB.`);
         return;
       }
       const presign = await fetch('/api/client/upload-url', {

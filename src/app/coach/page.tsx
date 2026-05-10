@@ -4,10 +4,11 @@ import { startOfWeek, formatISO, getISOWeek, getISOWeekYear } from 'date-fns';
 import { requireCoach } from '@/lib/coach-guard';
 import { listClientSummaries } from '@/lib/clients';
 import { db } from '@/lib/supabase';
+import { LIVE_LOOKBACK_HOURS } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 
-const LIVE_LOOKBACK_MS = 6 * 60 * 60 * 1000;
+const LIVE_LOOKBACK_MS = LIVE_LOOKBACK_HOURS * 60 * 60 * 1000;
 
 export default async function CoachHome() {
   const user = await requireCoach();
