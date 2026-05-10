@@ -22,6 +22,13 @@ export default async function CoachLayout({ children }: { children: React.ReactN
           </Link>
           <div className="flex items-center gap-4 shrink-0 text-[11px] uppercase tracking-[0.16em]">
             <NotificationsToggle />
+            <Link
+              href="/settings/sessions"
+              className="text-muted hover:text-text transition-colors"
+              aria-label="Active sessions"
+            >
+              Devices
+            </Link>
             <SwitchToSelfButton />
             <LogoutButton />
           </div>

@@ -72,6 +72,13 @@ export default async function TodayPage() {
           >
             Check-in
           </Link>
+          <Link
+            href="/settings/sessions"
+            className="text-[10px] uppercase tracking-[0.22em] text-muted hover:text-text transition-colors"
+            aria-label="Active sessions"
+          >
+            Devices
+          </Link>
           {link && <SwitchToCoachButton />}
           <LogoutButton />
         </>

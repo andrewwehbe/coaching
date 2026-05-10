@@ -219,10 +219,21 @@ export async function readSession(): Promise<SessionUser | null> {
   if (!session || session.revoked) return null;
   if (new Date(session.expires_at) < new Date()) return null;
 
-  // Touch last_used_at without awaiting — best-effort.
+  // Touch last_used_at + bind IP/UA for the /settings session list.
+  // Best-effort, no await — a failed touch must not break the request.
+  const h = await headers();
+  const ip =
+    h.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    h.get('x-real-ip') ||
+    null;
+  const ua = h.get('user-agent') ?? null;
   void supa
     .from('sessions')
-    .update({ last_used_at: new Date().toISOString() })
+    .update({
+      last_used_at: new Date().toISOString(),
+      last_used_ip: ip,
+      last_used_ua: ua,
+    })
     .eq('id', token);
 
   if (session.user_type === 'coach') {
