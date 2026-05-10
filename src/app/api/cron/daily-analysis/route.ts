@@ -93,7 +93,40 @@ async function handle(req: Request): Promise<NextResponse> {
     }),
   );
 
-  return NextResponse.json({ ok: true, clients: summary.length, summary });
+  // Prune dead push subscriptions. Two flavors:
+  //   - never delivered AND created >30d ago → stale install
+  //   - last delivered >60d ago               → user uninstalled / wiped
+  const pruned = await prunePushDevices();
+
+  return NextResponse.json({ ok: true, clients: summary.length, pruned, summary });
+}
+
+async function prunePushDevices(): Promise<number> {
+  const supa = db();
+  const now = Date.now();
+  const stale30dIso = new Date(now - 30 * 24 * 3600 * 1000).toISOString();
+  const stale60dIso = new Date(now - 60 * 24 * 3600 * 1000).toISOString();
+
+  const [{ count: neverDelivered }, { count: silenced }] = await Promise.all([
+    supa
+      .from('devices')
+      .delete({ count: 'exact' })
+      .is('last_pushed_ok_at', null)
+      .lt('created_at', stale30dIso),
+    supa
+      .from('devices')
+      .delete({ count: 'exact' })
+      .lt('last_pushed_ok_at', stale60dIso),
+  ]);
+
+  const total = (neverDelivered ?? 0) + (silenced ?? 0);
+  if (total > 0) {
+    log.info('push.devices.pruned', {
+      neverDelivered: neverDelivered ?? 0,
+      silenced: silenced ?? 0,
+    });
+  }
+  return total;
 }
 
 /**

@@ -52,6 +52,12 @@ async function sendToUser(
       if (!sub?.endpoint) return;
       try {
         await webpush.sendNotification(sub, json);
+        // Stamp last_pushed_ok_at so the cron prune knows this device
+        // is alive. Best-effort — failure here doesn't break delivery.
+        void supa
+          .from('devices')
+          .update({ last_pushed_ok_at: new Date().toISOString() })
+          .eq('id', d.id);
       } catch (err: unknown) {
         // Drop subscriptions the push service has expired/unsubscribed.
         const status = (err as { statusCode?: number }).statusCode;
