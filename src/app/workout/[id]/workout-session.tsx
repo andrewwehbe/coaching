@@ -401,10 +401,14 @@ export function WorkoutSession({
         return;
       }
       setDoneNow(true);
-      // Bust the service worker's HTML cache so the next /today open
-      // shows the freshly-completed day as Done instead of in-progress.
+      // Targeted invalidation: just /today (which shows day status) and
+      // /trends (which shows the freshly-updated PRs / consistency).
+      // The rest of the cache stays warm.
       try {
-        navigator.serviceWorker?.controller?.postMessage({ type: 'clear-cache' });
+        navigator.serviceWorker?.controller?.postMessage({
+          type: 'invalidate-paths',
+          paths: ['/today', '/trends'],
+        });
       } catch {}
       router.refresh();
     } finally {

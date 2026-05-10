@@ -10,7 +10,7 @@
      doesn't see the previous user's cached HTML.
 */
 
-const VERSION = 'v3';
+const VERSION = 'v4';
 const APP_CACHE = `coaching-app-${VERSION}`;
 const STATIC_CACHE = `coaching-static-${VERSION}`;
 const OFFLINE_URL = '/offline';
@@ -149,21 +149,40 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-/* Allow page to ping the SW to replay queued writes. The actual replay
-   happens in the page (it owns the auth cookie context); the SW just
-   broadcasts to all clients so any open tab can flush.
+/* Page → SW messages.
 
-   Also: clear-cache, posted by LogoutButton so a different user on the same
-   device doesn't get served the previous user's cached HTML. */
+   - flush-queue: replay queued writes. Actual replay happens in pages
+     (they own auth cookie context); SW just broadcasts to all open tabs.
+   - clear-cache: nuke the entire APP_CACHE. Posted on logout so the next
+     user doesn't get the previous user's cached HTML.
+   - invalidate-paths { paths: string[] }: targeted invalidation for
+     specific URLs (e.g. /today after workout completion). Keeps the
+     rest of the cache warm so navigations to other screens stay fast.
+*/
 self.addEventListener('message', (event) => {
-  if (event.data?.type === 'flush-queue') {
+  const data = event.data ?? {};
+  if (data.type === 'flush-queue') {
     event.waitUntil(
       (async () => {
         const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
         for (const c of all) c.postMessage({ type: 'flush-queue' });
       })()
     );
-  } else if (event.data?.type === 'clear-cache') {
+  } else if (data.type === 'clear-cache') {
     event.waitUntil(caches.delete(APP_CACHE));
+  } else if (data.type === 'invalidate-paths' && Array.isArray(data.paths)) {
+    event.waitUntil(
+      (async () => {
+        const cache = await caches.open(APP_CACHE);
+        await Promise.all(
+          data.paths
+            .filter((p) => typeof p === 'string')
+            .map((p) => {
+              const url = new URL(p, self.location.origin).toString();
+              return cache.delete(url);
+            })
+        );
+      })()
+    );
   }
 });
