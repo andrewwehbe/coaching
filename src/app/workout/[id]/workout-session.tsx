@@ -148,6 +148,12 @@ export function WorkoutSession({
   const [videoError, setVideoError] = useState<string | null>(null);
   const [videoProgress, setVideoProgress] = useState(0);
 
+  // When non-null, the form is editing an existing set (by set_number) on
+  // the current exercise instead of appending a new one. The submit
+  // re-uses the upsert on (exercise_log_id, set_number) so the row is
+  // replaced server-side.
+  const [editingSetNumber, setEditingSetNumber] = useState<number | null>(null);
+
   function resetForm() {
     setWeight('');
     setReps('');
@@ -156,11 +162,26 @@ export function WorkoutSession({
     setCardioMin('');
     setVideoUrl(null);
     setVideoError(null);
+    setEditingSetNumber(null);
   }
 
-  const setNumber = (current?.sets.length ?? 0) + 1;
+  function loadSetForEdit(s: LoggedSet) {
+    setEditingSetNumber(s.setNumber);
+    if (s.unit === 'lb' || s.unit === 'kg') setUnit(s.unit);
+    setWeight(s.weight != null ? String(s.weight) : '');
+    setReps(s.reps != null ? String(s.reps) : '');
+    setRir(s.rir != null ? String(s.rir) : '');
+    setNotes(s.notes ?? '');
+    setCardioMin(s.cardioMinutes != null ? String(s.cardioMinutes) : '');
+    setVideoUrl(s.videoUrl ?? null);
+    setVideoError(null);
+  }
+
+  const setNumber = editingSetNumber ?? (current?.sets.length ?? 0) + 1;
   const isLastPrescribed =
-    current?.prescribedSets != null && setNumber >= current.prescribedSets;
+    !editingSetNumber &&
+    current?.prescribedSets != null &&
+    setNumber >= current.prescribedSets;
 
   async function submitSet() {
     if (!current) return;
@@ -192,35 +213,41 @@ export function WorkoutSession({
       }
 
       // Update local state.
+      const wasEditing = editingSetNumber != null;
       setState((prev) => {
-        const next = prev.map((e) =>
-          e.id === current.id
-            ? {
-                ...e,
-                sets: [
-                  ...e.sets,
-                  {
-                    setNumber,
-                    weight: body.weight as number | null,
-                    unit: (body.unit as 'kg' | 'lb' | undefined) ?? null,
-                    reps: body.reps as number | null,
-                    rir: body.rir as number | null,
-                    cardioMinutes: body.cardioMinutes as number | null,
-                    videoUrl: (body.videoUrl as string | null) ?? null,
-                    notes: (body.notes as string | null) ?? null,
-                  },
-                ],
-                logStatus: (isLastPrescribed ? 'completed' : null) as ExerciseState['logStatus'],
-              }
-            : e
-        );
+        const next = prev.map((e) => {
+          if (e.id !== current.id) return e;
+          const newSet: LoggedSet = {
+            setNumber,
+            weight: body.weight as number | null,
+            unit: (body.unit as 'kg' | 'lb' | undefined) ?? null,
+            reps: body.reps as number | null,
+            rir: body.rir as number | null,
+            cardioMinutes: body.cardioMinutes as number | null,
+            videoUrl: (body.videoUrl as string | null) ?? null,
+            notes: (body.notes as string | null) ?? null,
+          };
+          const sets = wasEditing
+            ? e.sets.map((s) => (s.setNumber === setNumber ? newSet : s))
+            : [...e.sets, newSet];
+          return {
+            ...e,
+            sets,
+            logStatus: (isLastPrescribed
+              ? 'completed'
+              : e.logStatus) as ExerciseState['logStatus'],
+          };
+        });
         if (isLastPrescribed) setCurrentIdx((idx) => advanceFrom(next, idx));
         return next;
       });
 
       resetForm();
 
-      if (isLastPrescribed) {
+      if (wasEditing) {
+        // Saving an edit doesn't trigger a rest — the user wasn't between sets.
+        setResting(false);
+      } else if (isLastPrescribed) {
         // Move to next exercise; no rest needed.
         setResting(false);
       } else {
@@ -526,23 +553,65 @@ export function WorkoutSession({
         </div>
       )}
 
+      {current.sets.length > 0 && (
+        <section className="mt-6 rounded-2xl border border-border bg-surface/40 px-3 py-2.5">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-faint mb-1.5 px-1">
+            Logged
+          </p>
+          <ul className="space-y-1">
+            {[...current.sets]
+              .sort((a, b) => a.setNumber - b.setNumber)
+              .map((s) => {
+                const isEditingThis = editingSetNumber === s.setNumber;
+                return (
+                  <li key={s.setNumber}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        isEditingThis ? resetForm() : loadSetForEdit(s)
+                      }
+                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition-colors ${
+                        isEditingThis
+                          ? 'bg-primary/15 text-primary-hi'
+                          : 'hover:bg-surface-2 text-text'
+                      }`}
+                    >
+                      <span className="text-faint tabular-nums text-xs">
+                        {s.setNumber.toString().padStart(2, '0')}
+                      </span>
+                      <span className="font-medium tabular-nums">
+                        {summarizeSet(s, current.isCardio)}
+                      </span>
+                      <span className="text-[10px] uppercase tracking-[0.18em] text-faint">
+                        {isEditingThis ? 'editing' : 'edit'}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+          </ul>
+        </section>
+      )}
+
       <section className="mt-6 space-y-4">
         <div className="flex items-baseline justify-between">
           <h2 className="text-lg font-semibold">
-            Set {setNumber}
-            {current.prescribedSets ? (
+            {editingSetNumber != null ? 'Edit set ' : 'Set '}
+            {setNumber}
+            {current.prescribedSets && editingSetNumber == null ? (
               <span className="text-faint text-sm font-normal ml-1.5">
                 of {current.prescribedSets}
               </span>
             ) : null}
           </h2>
-          {current.sets.length > 0 && (
-            <p className="text-xs text-muted">
-              Last:{' '}
-              <span className="text-text font-medium tabular-nums">
-                {summarizeSet(current.sets[current.sets.length - 1], current.isCardio)}
-              </span>
-            </p>
+          {editingSetNumber != null && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="text-xs text-muted hover:text-text transition-colors"
+            >
+              Cancel edit
+            </button>
           )}
         </div>
 
@@ -605,7 +674,11 @@ export function WorkoutSession({
           disabled={submitting || isFormEmpty(current.isCardio, weight, reps, cardioMin)}
           className="w-full h-14 rounded-2xl bg-primary hover:bg-primary-hi active:bg-primary-press text-bg text-base font-semibold disabled:opacity-40 disabled:shadow-none transition-all shadow-[0_10px_40px_-12px_rgba(34,197,94,0.7)]"
         >
-          {isLastPrescribed ? 'Log final set' : `Log set ${setNumber}`}
+          {editingSetNumber != null
+            ? `Save set ${setNumber}`
+            : isLastPrescribed
+              ? 'Log final set'
+              : `Log set ${setNumber}`}
         </button>
 
         {isLastPrescribed && (

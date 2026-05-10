@@ -3,13 +3,12 @@ import { NextResponse } from 'next/server';
 import { issueSession, readSession, revokeSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { audit } from '@/lib/audit';
+import { linkForCoach } from '@/lib/coach-link';
 
-// Quality-of-life shortcut for the coach who is also a client (e.g. trains
-// themselves). Single click in the coach UI swaps the session over to a
-// preconfigured client account so they don't have to log out and re-enter
-// the client PIN. Defaults to Andrew's id; override with COACH_LINKED_CLIENT_ID
-// in env if the linked client ever changes.
-const FALLBACK_LINKED_CLIENT_ID = '8a06a900-aec4-44fc-8da4-9f90581a74c0';
+// Quality-of-life shortcut for a coach who is also a client (e.g. trains
+// themselves). Single click in the coach UI swaps the session over to the
+// linked client account (coach_links row) so they don't have to log out
+// and re-enter the client PIN.
 
 export async function POST(req: Request) {
   const user = await readSession();
@@ -17,12 +16,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const targetId = process.env.COACH_LINKED_CLIENT_ID || FALLBACK_LINKED_CLIENT_ID;
+  const link = await linkForCoach(user.id);
+  if (!link) {
+    return NextResponse.json({ error: 'No linked client' }, { status: 404 });
+  }
+
   const supa = db();
   const { data: client } = await supa
     .from('clients')
     .select('id, name, greeting_name, active')
-    .eq('id', targetId)
+    .eq('id', link.clientId)
     .maybeSingle();
 
   if (!client) {

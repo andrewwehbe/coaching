@@ -47,6 +47,7 @@ export function LoadInView({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [confirmThree, setConfirmThree] = useState(false);
 
   const sorted = [...days].sort((a, b) => a.dayIndex - b.dayIndex);
   const N = sorted.length;
@@ -82,14 +83,8 @@ export function LoadInView({
       .join(', ') || 'none';
   const buttonDelay = lastImpact + BUTTON_BUFFER;
 
-  async function start() {
+  async function startNow() {
     if (!suggested || busy) return;
-    if (threeInARowWarning && !suggested.workoutId) {
-      const ok = window.confirm(
-        "You've trained the last 2 days. Three days in a row isn't recommended. Start anyway?",
-      );
-      if (!ok) return;
-    }
     setBusy(true);
     try {
       if (suggested.workoutId) {
@@ -110,6 +105,15 @@ export function LoadInView({
     } catch {
       setBusy(false);
     }
+  }
+
+  function start() {
+    if (!suggested || busy) return;
+    if (threeInARowWarning && !suggested.workoutId) {
+      setConfirmThree(true);
+      return;
+    }
+    void startNow();
   }
 
   const buttonLabel = suggested
@@ -328,6 +332,50 @@ export function LoadInView({
           )}
         </button>
       </div>
+
+      {confirmThree && (
+        <div
+          className="fixed inset-0 z-50 bg-bg/85 backdrop-blur flex items-end sm:items-center justify-center p-4"
+          onClick={() => setConfirmThree(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-surface rounded-2xl border border-border p-5 space-y-4 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.22em] text-warn mb-1.5">
+                Heads up
+              </p>
+              <h3 className="text-lg font-semibold leading-tight">
+                Three days in a row isn&rsquo;t recommended.
+              </h3>
+              <p className="mt-2 text-sm text-muted">
+                You&rsquo;ve trained the last 2 days. Recovery is part of the program — but if
+                you&rsquo;re feeling fresh, you can push through.
+              </p>
+            </div>
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmThree(false);
+                  void startNow();
+                }}
+                className="w-full h-11 rounded-xl bg-primary hover:bg-primary-hi text-bg text-sm font-semibold transition-colors"
+              >
+                Start anyway
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmThree(false)}
+                className="w-full h-11 rounded-xl border border-border text-muted hover:bg-surface-2 hover:text-text text-sm font-medium transition-colors"
+              >
+                Rest today
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
