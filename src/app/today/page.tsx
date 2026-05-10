@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation';
-import Link from 'next/link';
 
 import { readSession } from '@/lib/auth';
 import { buildTodaySchedule } from '@/lib/schedule';
@@ -59,24 +58,14 @@ export default async function TodayPage() {
       threeInARowWarning={schedule.threeInARowWarning}
       isDeloadWeek={schedule.isDeloadWeek}
       rightControls={
-        <>
-          <Link
-            href="/trends"
-            className="text-[10px] uppercase tracking-[0.22em] text-muted hover:text-text transition-colors"
-          >
-            Trends
-          </Link>
-          <Link
-            href="/check-in"
-            className="text-[10px] uppercase tracking-[0.22em] text-muted hover:text-text transition-colors"
-          >
-            Check-in
-          </Link>
-          <HeaderMenu
-            switchKind={link ? 'switch-to-coach' : null}
-            switchLabel="Coach"
-          />
-        </>
+        <HeaderMenu
+          switchKind={link ? 'switch-to-coach' : null}
+          switchLabel="Coach"
+          links={[
+            { href: '/trends', label: 'Trends' },
+            { href: '/check-in', label: 'Check-in' },
+          ]}
+        />
       }
     />
   );

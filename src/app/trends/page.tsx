@@ -75,6 +75,10 @@ export default async function TrendsPage() {
         <HeaderMenu
           switchKind={link ? 'switch-to-coach' : null}
           switchLabel="Coach"
+          links={[
+            { href: '/today', label: 'Today' },
+            { href: '/check-in', label: 'Check-in' },
+          ]}
         />
       </div>
 

@@ -1,31 +1,73 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 type SwitchKind = 'switch-to-coach' | 'switch-to-self' | null;
 
+export type HeaderMenuLink = {
+  href: string;
+  label: string;
+};
+
 /**
  * Account dropdown shown in the /today and /coach headers. Self-contained:
- * it renders the trigger (3-dot icon), the popover, and all the menu rows.
- * Click outside / Escape close it. Each action handles its own loading
- * state so the menu can stay open until the action completes (relevant
- * for the switch + signout flows that hard-navigate at the end).
+ * trigger (3-dot icon), popover, click-outside / Escape to close. The
+ * popover is portal'd to document.body so it escapes the header's
+ * backdrop-blur stacking context — without that, page content (program
+ * day cards, dashboard quadrants) renders above the menu and clips it.
+ *
+ * Each action handles its own loading state so the menu can stay open
+ * until switch/signout hard-navigates the page.
  */
 export function HeaderMenu({
   switchKind,
   switchLabel,
+  links = [],
 }: {
   switchKind: SwitchKind;
   switchLabel: string;
+  links?: HeaderMenuLink[];
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // Compute panel position relative to the trigger when opened. Re-measure
+  // on resize / scroll so a sticky-header that shifts under a scroll keeps
+  // the panel anchored.
+  useLayoutEffect(() => {
+    if (!open) return;
+    function place() {
+      const r = triggerRef.current?.getBoundingClientRect();
+      if (!r) return;
+      setPos({
+        top: r.bottom + 6,
+        right: window.innerWidth - r.right,
+      });
+    }
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     function onDoc(e: MouseEvent) {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (
+        !triggerRef.current?.contains(t) &&
+        !panelRef.current?.contains(t)
+      ) {
+        setOpen(false);
+      }
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setOpen(false);
@@ -67,51 +109,78 @@ export function HeaderMenu({
   }
 
   return (
-    <div ref={wrapRef} className="relative shrink-0">
+    <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label="Account menu"
-        className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border bg-surface/40 text-muted hover:text-text hover:border-border-strong transition-colors"
+        className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border bg-surface/40 text-muted hover:text-text hover:border-border-strong transition-colors shrink-0"
       >
         <DotsIcon className="h-3.5 w-3.5" />
       </button>
 
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full mt-2 min-w-[180px] rounded-xl border border-border bg-surface shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)] py-1 z-50"
-        >
-          <NotificationsMenuRow />
+      {open &&
+        pos &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="menu"
+            style={{
+              position: 'fixed',
+              top: pos.top,
+              right: pos.right,
+              zIndex: 9999,
+            }}
+            className="min-w-[180px] rounded-xl border border-border bg-surface shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)] py-1"
+          >
+            {links.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className="block px-3 py-2 text-sm text-text hover:bg-surface-2 transition-colors"
+                prefetch={false}
+              >
+                {l.label}
+              </Link>
+            ))}
 
-          {switchKind && (
+            {links.length > 0 && <div className="my-1 h-px bg-border" />}
+
+            <NotificationsMenuRow />
+
+            {switchKind && (
+              <button
+                role="menuitem"
+                type="button"
+                disabled={busy !== null}
+                onClick={doSwitch}
+                className="w-full text-left px-3 py-2 text-sm text-text hover:bg-surface-2 disabled:opacity-50 transition-colors"
+              >
+                {busy === 'switch' ? 'Switching…' : switchLabel}
+              </button>
+            )}
+
+            <div className="my-1 h-px bg-border" />
+
             <button
               role="menuitem"
               type="button"
               disabled={busy !== null}
-              onClick={doSwitch}
-              className="w-full text-left px-3 py-2 text-sm text-text hover:bg-surface-2 disabled:opacity-50 transition-colors"
+              onClick={doSignout}
+              className="w-full text-left px-3 py-2 text-sm text-muted hover:text-danger hover:bg-surface-2 disabled:opacity-50 transition-colors"
             >
-              {busy === 'switch' ? 'Switching…' : switchLabel}
+              {busy === 'signout' ? 'Signing out…' : 'Sign out'}
             </button>
-          )}
-
-          <div className="my-1 h-px bg-border" />
-
-          <button
-            role="menuitem"
-            type="button"
-            disabled={busy !== null}
-            onClick={doSignout}
-            className="w-full text-left px-3 py-2 text-sm text-muted hover:text-danger hover:bg-surface-2 disabled:opacity-50 transition-colors"
-          >
-            {busy === 'signout' ? 'Signing out…' : 'Sign out'}
-          </button>
-        </div>
-      )}
-    </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
