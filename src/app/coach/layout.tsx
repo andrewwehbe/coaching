@@ -1,15 +1,15 @@
 import Link from 'next/link';
 
 import { requireCoach } from '@/lib/coach-guard';
-import { LogoutButton } from '@/components/logout-button';
-import { NotificationsToggle } from '@/components/notifications-toggle';
-import { SwitchToSelfButton } from '@/components/switch-to-self-button';
+import { HeaderMenu } from '@/components/header-menu';
+import { linkForCoach } from '@/lib/coach-link';
 import { CoachNav } from './coach-nav';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CoachLayout({ children }: { children: React.ReactNode }) {
-  await requireCoach();
+  const user = await requireCoach();
+  const link = await linkForCoach(user.id);
   return (
     <div className="relative flex min-h-full flex-1 flex-col">
       <header className="sticky top-0 z-30 border-b border-border bg-bg/85 backdrop-blur-xl">
@@ -20,18 +20,10 @@ export default async function CoachLayout({ children }: { children: React.ReactN
               Coach
             </span>
           </Link>
-          <div className="flex items-center gap-4 shrink-0 text-[11px] uppercase tracking-[0.16em]">
-            <NotificationsToggle />
-            <Link
-              href="/settings/sessions"
-              className="text-muted hover:text-text transition-colors"
-              aria-label="Active sessions"
-            >
-              Devices
-            </Link>
-            <SwitchToSelfButton />
-            <LogoutButton />
-          </div>
+          <HeaderMenu
+            switchKind={link ? 'switch-to-self' : null}
+            switchLabel="My account"
+          />
         </div>
         <div className="mx-auto max-w-5xl w-full px-5 sm:px-8">
           <CoachNav />

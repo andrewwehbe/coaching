@@ -4,7 +4,8 @@ import { format, formatDistanceToNow, startOfWeek, formatISO, subWeeks } from 'd
 
 import { readSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
-import { LogoutButton } from '@/components/logout-button';
+import { linkForClient } from '@/lib/coach-link';
+import { HeaderMenu } from '@/components/header-menu';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -26,35 +27,41 @@ export default async function TrendsPage() {
   const weeksAgo = subWeeks(startOfWeek(new Date(), { weekStartsOn: 1 }), WEEKS_OF_HISTORY);
   const weeksAgoIso = formatISO(weeksAgo, { representation: 'date' });
 
-  const [{ data: prs }, { data: weights }, { data: workouts }, { data: client }] =
-    await Promise.all([
-      supa
-        .from('best_efforts')
-        .select('exercise_name_key, best_weight, best_unit, best_reps, updated_at')
-        .eq('client_id', user.id)
-        .gte('updated_at', since.toISOString())
-        .not('source_set_id', 'is', null)
-        .order('updated_at', { ascending: false })
-        .limit(20),
-      supa
-        .from('check_ins')
-        .select('date, body_weight, body_weight_unit')
-        .eq('client_id', user.id)
-        .not('body_weight', 'is', null)
-        .gte('date', weeksAgoIso)
-        .order('date', { ascending: true }),
-      supa
-        .from('workouts')
-        .select('id, week_start, completed_at')
-        .eq('client_id', user.id)
-        .gte('week_start', weeksAgoIso)
-        .not('completed_at', 'is', null),
-      supa
-        .from('clients')
-        .select('weekly_day_target, name')
-        .eq('id', user.id)
-        .maybeSingle(),
-    ]);
+  const [
+    { data: prs },
+    { data: weights },
+    { data: workouts },
+    { data: client },
+    link,
+  ] = await Promise.all([
+    supa
+      .from('best_efforts')
+      .select('exercise_name_key, best_weight, best_unit, best_reps, updated_at')
+      .eq('client_id', user.id)
+      .gte('updated_at', since.toISOString())
+      .not('source_set_id', 'is', null)
+      .order('updated_at', { ascending: false })
+      .limit(20),
+    supa
+      .from('check_ins')
+      .select('date, body_weight, body_weight_unit')
+      .eq('client_id', user.id)
+      .not('body_weight', 'is', null)
+      .gte('date', weeksAgoIso)
+      .order('date', { ascending: true }),
+    supa
+      .from('workouts')
+      .select('id, week_start, completed_at')
+      .eq('client_id', user.id)
+      .gte('week_start', weeksAgoIso)
+      .not('completed_at', 'is', null),
+    supa
+      .from('clients')
+      .select('weekly_day_target, name')
+      .eq('id', user.id)
+      .maybeSingle(),
+    linkForClient(user.id),
+  ]);
 
   const target = client?.weekly_day_target ?? 4;
   const weekBuckets = bucketByWeek(workouts ?? [], WEEKS_OF_HISTORY);
@@ -65,7 +72,10 @@ export default async function TrendsPage() {
         <Link href="/today" className="text-sm text-muted hover:text-text transition-colors">
           ← Today
         </Link>
-        <LogoutButton />
+        <HeaderMenu
+          switchKind={link ? 'switch-to-coach' : null}
+          switchLabel="Coach"
+        />
       </div>
 
       <header className="mb-7">

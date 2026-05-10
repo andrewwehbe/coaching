@@ -4,7 +4,8 @@ import { cookies } from 'next/headers';
 
 import { readSession, SESSION_COOKIE } from '@/lib/auth';
 import { db } from '@/lib/supabase';
-import { LogoutButton } from '@/components/logout-button';
+import { linkForClient, linkForCoach } from '@/lib/coach-link';
+import { HeaderMenu } from '@/components/header-menu';
 import { SessionList } from './session-list';
 
 export const dynamic = 'force-dynamic';
@@ -38,6 +39,14 @@ export default async function SessionsPage() {
   }));
 
   const homeHref = user.type === 'coach' ? '/coach' : '/today';
+  const link =
+    user.type === 'coach' ? await linkForCoach(user.id) : await linkForClient(user.id);
+  const switchKind = link
+    ? user.type === 'coach'
+      ? ('switch-to-self' as const)
+      : ('switch-to-coach' as const)
+    : null;
+  const switchLabel = user.type === 'coach' ? 'My account' : 'Coach';
 
   return (
     <main className="flex flex-1 flex-col px-5 py-6 max-w-md w-full mx-auto">
@@ -45,7 +54,7 @@ export default async function SessionsPage() {
         <Link href={homeHref} className="text-sm text-muted hover:text-text transition-colors">
           ← Back
         </Link>
-        <LogoutButton />
+        <HeaderMenu switchKind={switchKind} switchLabel={switchLabel} />
       </div>
 
       <header className="mb-5">

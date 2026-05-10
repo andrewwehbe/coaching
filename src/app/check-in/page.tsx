@@ -5,8 +5,8 @@ import Link from 'next/link';
 
 import { readSession } from '@/lib/auth';
 import { db, signMediaUrls } from '@/lib/supabase';
-import { LogoutButton } from '@/components/logout-button';
-import { NotificationsToggle } from '@/components/notifications-toggle';
+import { linkForClient } from '@/lib/coach-link';
+import { HeaderMenu } from '@/components/header-menu';
 import { CheckInForm } from './check-in-form';
 
 const PHOTO_BUCKET = 'check-in-photos';
@@ -20,12 +20,15 @@ export default async function CheckInPage() {
   if (!user.active) redirect('/deactivated');
 
   const supa = db();
-  const { data: recent } = await supa
-    .from('check_ins')
-    .select('id, date, body_weight, body_weight_unit, notes, check_in_photos(id, label, storage_url)')
-    .eq('client_id', user.id)
-    .order('date', { ascending: false })
-    .limit(6);
+  const [{ data: recent }, link] = await Promise.all([
+    supa
+      .from('check_ins')
+      .select('id, date, body_weight, body_weight_unit, notes, check_in_photos(id, label, storage_url)')
+      .eq('client_id', user.id)
+      .order('date', { ascending: false })
+      .limit(6),
+    linkForClient(user.id),
+  ]);
 
   const last = recent?.[0] ?? null;
   const lastUnit = (last?.body_weight_unit as 'kg' | 'lb' | null) ?? 'kg';
@@ -54,8 +57,10 @@ export default async function CheckInPage() {
           <h1 className="mt-1 text-2xl font-semibold tracking-tight truncate">{user.name}</h1>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          <NotificationsToggle />
-          <LogoutButton />
+          <HeaderMenu
+            switchKind={link ? 'switch-to-coach' : null}
+            switchLabel="Coach"
+          />
         </div>
       </header>
 

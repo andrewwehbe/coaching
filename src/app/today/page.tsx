@@ -4,9 +4,7 @@ import Link from 'next/link';
 import { readSession } from '@/lib/auth';
 import { buildTodaySchedule } from '@/lib/schedule';
 import { linkForClient } from '@/lib/coach-link';
-import { LogoutButton } from '@/components/logout-button';
-import { NotificationsToggle } from '@/components/notifications-toggle';
-import { SwitchToCoachButton } from '@/components/switch-to-coach-button';
+import { HeaderMenu } from '@/components/header-menu';
 import { LoadInView } from './load-in';
 
 export const dynamic = 'force-dynamic';
@@ -30,7 +28,10 @@ export default async function TodayPage() {
         <p className="text-muted text-sm max-w-xs">
           Your coach hasn&apos;t set up your program. Check back soon.
         </p>
-        <LogoutButton />
+        <HeaderMenu
+          switchKind={link ? 'switch-to-coach' : null}
+          switchLabel="Coach"
+        />
       </main>
     );
   }
@@ -59,7 +60,6 @@ export default async function TodayPage() {
       isDeloadWeek={schedule.isDeloadWeek}
       rightControls={
         <>
-          <NotificationsToggle />
           <Link
             href="/trends"
             className="text-[10px] uppercase tracking-[0.22em] text-muted hover:text-text transition-colors"
@@ -72,15 +72,10 @@ export default async function TodayPage() {
           >
             Check-in
           </Link>
-          <Link
-            href="/settings/sessions"
-            className="text-[10px] uppercase tracking-[0.22em] text-muted hover:text-text transition-colors"
-            aria-label="Active sessions"
-          >
-            Devices
-          </Link>
-          {link && <SwitchToCoachButton />}
-          <LogoutButton />
+          <HeaderMenu
+            switchKind={link ? 'switch-to-coach' : null}
+            switchLabel="Coach"
+          />
         </>
       }
     />
