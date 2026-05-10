@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
   }
 
-  const { pin, hash } = await generateUniquePin();
+  const { pin, hash, hmac } = await generateUniquePin();
   const supa = db();
 
   const { data: client, error } = await supa
@@ -39,6 +39,7 @@ export async function POST(req: Request) {
     .insert({
       name: parsed.data.name,
       pin_hash: hash,
+      pin_hmac: hmac,
       weekly_day_target: parsed.data.weekly_day_target,
       body_weight_freq: parsed.data.body_weight_freq,
       photo_check_in_enabled: parsed.data.photo_check_in_enabled,

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { cookies, headers } from 'next/headers';
 import bcrypt from 'bcryptjs';
 
@@ -36,6 +36,20 @@ export async function hashPin(pin: string): Promise<string> {
 
 export async function checkPin(pin: string, hash: string): Promise<boolean> {
   return bcrypt.compare(pin, hash);
+}
+
+/**
+ * Returns hex HMAC-SHA256 of the PIN under PIN_HMAC_KEY, or null if the
+ * env var isn't set. Used as a deterministic lookup key so login can find
+ * the candidate account in O(1) instead of bcrypt-comparing against every
+ * row. The bcrypt verify still runs once on the matched row, so DB-only
+ * leak of pin_hmac doesn't reveal the PIN — and HMAC without the key is
+ * unreversible.
+ */
+export function pinHmac(pin: string): string | null {
+  const key = process.env.PIN_HMAC_KEY;
+  if (!key) return null;
+  return createHmac('sha256', key).update(pin).digest('hex');
 }
 
 /**
@@ -95,80 +109,136 @@ export async function checkAndBumpRateLimit(ip: string): Promise<boolean> {
   return true;
 }
 
+type CoachRow = {
+  id: string;
+  name: string;
+  pin_hash: string;
+  pin_attempts: number | null;
+  pin_locked_until: string | null;
+};
+
+type ClientRow = {
+  id: string;
+  name: string;
+  greeting_name: string | null;
+  pin_hash: string;
+  pin_attempts: number | null;
+  pin_locked_until: string | null;
+  active: boolean;
+};
+
 /**
- * Try every coach + every active client for a matching PIN. Returns the
- * matched user record on success, or null. On account match but lockout
- * active, returns { lockedUntil }. Updates pin_attempts/lockout state.
+ * Try to match a PIN to a coach or active client. If PIN_HMAC_KEY is set
+ * AND the row has pin_hmac populated, login is O(1) — look up by hash,
+ * bcrypt-verify once. Otherwise fall back to bcrypt-loop across all rows
+ * (legacy behaviour, slow but correct). New PINs always populate pin_hmac.
+ *
+ * Brute-force protection is the IP rate-limit; per-account counters are
+ * deliberately not bumped on no-match (see S1 in REVIEW history).
  */
 export async function attemptPinLogin(
-  pin: string
+  pin: string,
 ): Promise<
   | { ok: true; user: SessionUser }
   | { ok: false; reason: 'invalid' | 'locked'; lockedUntil?: Date }
 > {
   const supa = db();
+  const hmac = pinHmac(pin);
 
-  // We can't query by hash, so we have to fetch all candidates and bcrypt-
-  // compare. With low user counts (single coach + dozens of clients) this
-  // is fine. For larger scale, we'd switch to a deterministic lookup key.
+  // Fast path: if we can compute an HMAC, ask the DB for any rows that
+  // match. There's no cross-table uniqueness so we look both up.
+  if (hmac) {
+    const [{ data: coachHits }, { data: clientHits }] = await Promise.all([
+      supa
+        .from('coaches')
+        .select('id, name, pin_hash, pin_attempts, pin_locked_until')
+        .eq('pin_hmac', hmac),
+      supa
+        .from('clients')
+        .select('id, name, greeting_name, pin_hash, pin_attempts, pin_locked_until, active')
+        .eq('pin_hmac', hmac)
+        .eq('active', true),
+    ]);
+
+    for (const c of (coachHits ?? []) as CoachRow[]) {
+      const r = await tryCoach(c, pin);
+      if (r) return r;
+    }
+    for (const c of (clientHits ?? []) as ClientRow[]) {
+      const r = await tryClient(c, pin);
+      if (r) return r;
+    }
+    // Fall through to legacy loop if no hmac hit — covers accounts that
+    // haven't been migrated yet.
+  }
+
+  // Legacy / fallback bcrypt-loop. Skips rows that already have pin_hmac
+  // populated when we have a key (those would have matched the fast path).
   const [{ data: coaches }, { data: clients }] = await Promise.all([
-    supa.from('coaches').select('id,name,pin_hash,pin_attempts,pin_locked_until'),
+    supa
+      .from('coaches')
+      .select('id, name, pin_hash, pin_attempts, pin_locked_until, pin_hmac'),
     supa
       .from('clients')
-      .select('id,name,greeting_name,pin_hash,pin_attempts,pin_locked_until,active')
+      .select('id, name, greeting_name, pin_hash, pin_attempts, pin_locked_until, pin_hmac, active')
       .eq('active', true),
   ]);
 
-  const now = new Date();
-
-  for (const c of coaches ?? []) {
-    if (c.pin_locked_until && new Date(c.pin_locked_until) > now) {
-      // Don't reveal lockout for unmatched accounts; only check after match.
-    }
-    if (await checkPin(pin, c.pin_hash)) {
-      if (c.pin_locked_until && new Date(c.pin_locked_until) > now) {
-        return { ok: false, reason: 'locked', lockedUntil: new Date(c.pin_locked_until) };
-      }
-      await supa
-        .from('coaches')
-        .update({ pin_attempts: 0, pin_locked_until: null })
-        .eq('id', c.id);
-      return {
-        ok: true,
-        user: { type: 'coach', id: c.id, name: c.name },
-      };
-    }
+  for (const c of (coaches ?? []) as Array<CoachRow & { pin_hmac: string | null }>) {
+    if (hmac && c.pin_hmac) continue; // already covered by fast path
+    const r = await tryCoach(c, pin);
+    if (r) return r;
+  }
+  for (const c of (clients ?? []) as Array<ClientRow & { pin_hmac: string | null }>) {
+    if (hmac && c.pin_hmac) continue;
+    const r = await tryClient(c, pin);
+    if (r) return r;
   }
 
-  for (const c of clients ?? []) {
-    if (await checkPin(pin, c.pin_hash)) {
-      if (c.pin_locked_until && new Date(c.pin_locked_until) > now) {
-        return { ok: false, reason: 'locked', lockedUntil: new Date(c.pin_locked_until) };
-      }
-      await supa
-        .from('clients')
-        .update({ pin_attempts: 0, pin_locked_until: null })
-        .eq('id', c.id);
-      return {
-        ok: true,
-        user: {
-          type: 'client',
-          id: c.id,
-          name: c.name,
-          greetingName: c.greeting_name ?? c.name,
-          active: c.active,
-        },
-      };
-    }
-  }
-
-  // No match. Brute-force protection is the IP rate-limit (RATE_LIMIT_15M /
-  // RATE_LIMIT_24H, see checkAndBumpRateLimit). We deliberately do NOT bump
-  // per-account counters here: with PIN-only auth we can't tell which
-  // account was being targeted, so bumping every account on every wrong
-  // PIN locks out every legitimate user simultaneously after MAX_PIN_ATTEMPTS
-  // wrong guesses — a denial-of-service from any visitor.
   return { ok: false, reason: 'invalid' };
+}
+
+async function tryCoach(
+  c: CoachRow,
+  pin: string,
+): Promise<{ ok: true; user: SessionUser } | { ok: false; reason: 'locked'; lockedUntil: Date } | null> {
+  if (!(await checkPin(pin, c.pin_hash))) return null;
+  const now = new Date();
+  if (c.pin_locked_until && new Date(c.pin_locked_until) > now) {
+    return { ok: false, reason: 'locked', lockedUntil: new Date(c.pin_locked_until) };
+  }
+  const supa = db();
+  await supa
+    .from('coaches')
+    .update({ pin_attempts: 0, pin_locked_until: null })
+    .eq('id', c.id);
+  return { ok: true, user: { type: 'coach', id: c.id, name: c.name } };
+}
+
+async function tryClient(
+  c: ClientRow,
+  pin: string,
+): Promise<{ ok: true; user: SessionUser } | { ok: false; reason: 'locked'; lockedUntil: Date } | null> {
+  if (!(await checkPin(pin, c.pin_hash))) return null;
+  const now = new Date();
+  if (c.pin_locked_until && new Date(c.pin_locked_until) > now) {
+    return { ok: false, reason: 'locked', lockedUntil: new Date(c.pin_locked_until) };
+  }
+  const supa = db();
+  await supa
+    .from('clients')
+    .update({ pin_attempts: 0, pin_locked_until: null })
+    .eq('id', c.id);
+  return {
+    ok: true,
+    user: {
+      type: 'client',
+      id: c.id,
+      name: c.name,
+      greetingName: c.greeting_name ?? c.name,
+      active: c.active,
+    },
+  };
 }
 
 /**

@@ -16,10 +16,15 @@ export async function POST(_req: Request, { params }: { params: Params }) {
   const { data: existing } = await supa.from('clients').select('id').eq('id', id).maybeSingle();
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { pin, hash } = await generateUniquePin();
+  const { pin, hash, hmac } = await generateUniquePin();
   const { error } = await supa
     .from('clients')
-    .update({ pin_hash: hash, pin_attempts: 0, pin_locked_until: null })
+    .update({
+      pin_hash: hash,
+      pin_hmac: hmac,
+      pin_attempts: 0,
+      pin_locked_until: null,
+    })
     .eq('id', id);
 
   if (error) {

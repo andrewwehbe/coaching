@@ -3,7 +3,7 @@ import 'server-only';
 import { randomInt } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 
-import { hashPin } from './auth';
+import { hashPin, pinHmac } from './auth';
 import { db } from './supabase';
 
 /**
@@ -11,10 +11,15 @@ import { db } from './supabase';
  * coach or client PIN. We can't query by hash, so we fetch all hashes and
  * bcrypt-compare each candidate. With small user counts this is fine.
  *
- * Returns both the plaintext PIN (to show the coach once) and the bcrypt
- * hash to store.
+ * Returns the plaintext PIN (to show the coach once), the bcrypt hash to
+ * store, and the HMAC for fast login lookup (null if PIN_HMAC_KEY isn't
+ * configured — the system still works, just on the bcrypt-loop path).
  */
-export async function generateUniquePin(): Promise<{ pin: string; hash: string }> {
+export async function generateUniquePin(): Promise<{
+  pin: string;
+  hash: string;
+  hmac: string | null;
+}> {
   const supa = db();
   const [{ data: coaches }, { data: clients }] = await Promise.all([
     supa.from('coaches').select('pin_hash'),
@@ -37,7 +42,7 @@ export async function generateUniquePin(): Promise<{ pin: string; hash: string }
     }
     if (!collides) {
       const hash = await hashPin(pin);
-      return { pin, hash };
+      return { pin, hash, hmac: pinHmac(pin) };
     }
   }
   throw new Error('Could not generate a unique PIN after many attempts.');
