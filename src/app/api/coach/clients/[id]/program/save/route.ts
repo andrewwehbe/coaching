@@ -6,6 +6,7 @@ import { db } from '@/lib/supabase';
 import { parsePrescription } from '@/lib/sheet-parser';
 import { nameKeyFor } from '@/lib/exercise-name';
 import { sendPushToClient } from '@/lib/push';
+import { log } from '@/lib/log';
 
 type Params = Promise<{ id: string }>;
 
@@ -38,7 +39,11 @@ export async function POST(req: Request, ctx: { params: Params }) {
 
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    console.error('program/save: invalid body', parsed.error.flatten());
+    log.warn('program.save.invalid_body', {
+      coachId: user.id,
+      clientId,
+      issues: parsed.error.flatten(),
+    });
     return NextResponse.json({ error: 'Invalid program payload' }, { status: 400 });
   }
   const payload = parsed.data;
@@ -100,7 +105,7 @@ export async function POST(req: Request, ctx: { params: Params }) {
           .update({ label: day.label, day_index: dayIndex })
           .eq('id', dayId);
         if (error) {
-          console.error('day update', error);
+          log.error('program.save.day_update', error, { dayId, clientId });
           return NextResponse.json({ error: 'Failed to update day' }, { status: 500 });
         }
       }
@@ -111,7 +116,7 @@ export async function POST(req: Request, ctx: { params: Params }) {
         .select('id')
         .single();
       if (error || !row) {
-        console.error('day insert', error);
+        log.error('program.save.day_insert', error, { clientId, dayIndex });
         return NextResponse.json({ error: 'Failed to create day' }, { status: 500 });
       }
       dayId = row.id;
@@ -151,7 +156,7 @@ export async function POST(req: Request, ctx: { params: Params }) {
           })
           .eq('id', ex.id);
         if (error) {
-          console.error('ex update', error);
+          log.error('program.save.ex_update', error, { exerciseId: ex.id, clientId });
           return NextResponse.json({ error: 'Failed to update exercise' }, { status: 500 });
         }
         savedExercises.push({ id: ex.id });
@@ -174,7 +179,7 @@ export async function POST(req: Request, ctx: { params: Params }) {
           .select('id')
           .single();
         if (error || !row) {
-          console.error('ex insert', error);
+          log.error('program.save.ex_insert', error, { clientId, dayId });
           return NextResponse.json({ error: 'Failed to create exercise' }, { status: 500 });
         }
         incomingExerciseIds.add(row.id);
@@ -202,6 +207,19 @@ export async function POST(req: Request, ctx: { params: Params }) {
   // Days are not deleted in this editor — workouts reference them by FK,
   // so removing one would orphan history. Days only ever get added or renamed.
   // (To "delete" a day, the coach can re-upload the program from scratch.)
+
+  await supa.from('audit_log').insert({
+    actor_type: 'coach',
+    actor_id: user.id,
+    action: 'program.edit',
+    target_type: 'program',
+    target_id: program.id,
+    details: {
+      client_id: clientId,
+      day_count: savedDays.length,
+      exercise_count: savedDays.reduce((n, d) => n + d.exercises.length, 0),
+    },
+  });
 
   void sendPushToClient(clientId, {
     title: 'Program updated',
