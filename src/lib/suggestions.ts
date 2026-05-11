@@ -7,6 +7,7 @@ import {
   buildExposureHistory,
   countConsecutiveStalled,
   type ExerciseLogRow,
+  type Exposure,
 } from './plateau';
 import { matchCatalogForMany, type CatalogEntry } from './catalog';
 import {
@@ -81,11 +82,21 @@ export async function buildSuggestionsByClient(
   const lastWeekIso = formatISO(lastWeekStart, { representation: 'date' });
 
   // Fetch active programs + days + exercises for each client.
-  const { data: programs } = await supa
-    .from('programs')
-    .select('id, client_id, uploaded_at, training_start_at, days(id, day_index, label, exercises(id, name, name_key, prescribed_sets, archived_at))')
-    .in('client_id', clientIds)
-    .eq('active', true);
+  // Also fetch historical_exposures so we can prepend pre-app data
+  // (parsed from coach's sheets via scripts/import-history.ts) ahead of
+  // in-app workouts for the plateau analysis.
+  const [{ data: programs }, { data: historical }] = await Promise.all([
+    supa
+      .from('programs')
+      .select('id, client_id, uploaded_at, training_start_at, days(id, day_index, label, exercises(id, name, name_key, prescribed_sets, archived_at))')
+      .in('client_id', clientIds)
+      .eq('active', true),
+    supa
+      .from('historical_exposures')
+      .select('client_id, exercise_name_key, week_index, weight, unit, reps')
+      .in('client_id', clientIds)
+      .order('week_index', { ascending: true }),
+  ]);
 
   type ExRow = { id: string; name: string; name_key: string; prescribed_sets: number | null; archived_at: string | null };
   type DayRow = { id: string; day_index: number; label: string; exercises: ExRow[] };
@@ -216,6 +227,7 @@ export async function buildSuggestionsByClient(
       // Build per-name exercise log history.
       const nameToLogs = new Map<string, ExerciseLogRow[]>();
       const nameToExerciseIds = new Map<string, Set<string>>();
+      const nameKeyByLower = new Map<string, string>(); // lowercased display → app name_key
 
       const logsForClient = (logs ?? []).filter((l) => workoutToClient.get(l.workout_id) === cid);
 
@@ -242,16 +254,54 @@ export async function buildSuggestionsByClient(
           if (e.archived_at) continue;
           const k = e.name.trim().toLowerCase();
           displayNameByLowercase.set(k, e.name);
+          nameKeyByLower.set(k, e.name_key);
           const set = nameToExerciseIds.get(k) ?? new Set<string>();
           set.add(e.id);
           nameToExerciseIds.set(k, set);
         }
       }
 
-      for (const [nameKey, logsArr] of nameToLogs) {
+      // Historical exposures for this client, grouped by lowercased display
+      // name (via the exercise's name_key on the program).
+      const histByName = new Map<string, Exposure[]>();
+      const histForClient = (historical ?? []).filter((h) => h.client_id === cid);
+      // Reverse-map: name_key → lowercased name for this client's program
+      const lowerByNameKey = new Map<string, string>();
+      for (const [low, nk] of nameKeyByLower) lowerByNameKey.set(nk, low);
+      const anchor = prog.training_start_at
+        ? new Date(prog.training_start_at)
+        : new Date(prog.uploaded_at);
+      for (const h of histForClient) {
+        const low = lowerByNameKey.get(h.exercise_name_key);
+        if (!low) continue;
+        // Synthesize an Exposure that sorts BEFORE the in-app workouts.
+        // workoutStartedAt = training_start_at + (week_index - 1) * 7 days.
+        const ts = new Date(anchor.getTime() + (h.week_index - 1) * 7 * 24 * 60 * 60 * 1000);
+        const weight = Number(h.weight);
+        const arr = histByName.get(low) ?? [];
+        arr.push({
+          weight,
+          reps: h.reps,
+          workoutId: `hist:${h.exercise_name_key}:${h.week_index}`,
+          workoutStartedAt: ts.toISOString(),
+        });
+        histByName.set(low, arr);
+      }
+
+      // Walk every exercise that has either historical OR in-app data.
+      const allNames = new Set<string>([
+        ...nameToLogs.keys(),
+        ...histByName.keys(),
+      ]);
+
+      for (const nameKey of allNames) {
         const exerciseIdSet = nameToExerciseIds.get(nameKey);
         if (!exerciseIdSet || exerciseIdSet.size === 0) continue; // exercise no longer in active program
-        const history = buildExposureHistory(logsArr);
+        const logsArr = nameToLogs.get(nameKey) ?? [];
+        const appHistory = buildExposureHistory(logsArr);
+        const histExposures = histByName.get(nameKey) ?? [];
+        // Combine: historical first (oldest), then app (already sorted asc).
+        const history = [...histExposures, ...appHistory];
         if (history.length < WATCH_MIN) continue; // need at least 2 exposures
         const stalled = countConsecutiveStalled(history);
         if (stalled < WATCH_MIN) continue;
