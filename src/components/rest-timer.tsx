@@ -42,7 +42,13 @@ export function RestTimer({
   const progress = seconds > 0 ? 1 - remaining / seconds : 1;
 
   return (
-    <div className="fixed inset-0 z-50 bg-bg/95 backdrop-blur-md flex flex-col items-center justify-center px-6">
+    <div
+      className="fixed inset-0 z-50 bg-bg/95 backdrop-blur-md flex flex-col items-center justify-center px-6"
+      style={{
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
+    >
       {/* Soft radial glow behind timer */}
       <div
         className="absolute inset-0 pointer-events-none"

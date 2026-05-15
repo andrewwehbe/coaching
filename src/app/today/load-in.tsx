@@ -344,6 +344,7 @@ export function LoadInView({
       {confirmThree && (
         <div
           className="fixed inset-0 z-50 bg-bg/85 backdrop-blur flex items-end sm:items-center justify-center p-4"
+          style={{ paddingBottom: 'max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))' }}
           onClick={() => setConfirmThree(false)}
         >
           <div

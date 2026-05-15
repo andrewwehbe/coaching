@@ -55,7 +55,10 @@ export function IosInstallHint() {
   if (!show) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-40 rounded-2xl border border-accent/30 bg-surface/95 backdrop-blur-md px-4 py-3 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] flex items-start gap-3 max-w-md mx-auto">
+    <div
+      className="fixed left-4 right-4 z-40 rounded-2xl border border-accent/30 bg-surface/95 backdrop-blur-md px-4 py-3 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] flex items-start gap-3 max-w-md mx-auto"
+      style={{ bottom: 'max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))' }}
+    >
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-text">Install Coaching on your phone</p>
         <p className="text-xs text-muted mt-1">

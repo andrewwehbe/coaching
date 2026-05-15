@@ -57,6 +57,8 @@ html,
 body {
   background: var(--bg);
   color: var(--text);
+  /* Kill the gray tap-flash iOS Safari paints over interactive elements. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -71,6 +73,29 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
+  /* Prevent rubber-band overscroll above the app shell on iOS. */
+  overscroll-behavior-y: contain;
+  /* Account for iOS Safari's collapsing address bar instead of the static
+     viewport height — html keeps `h-full` for layout chains, body uses dvh. */
+  min-height: 100dvh;
+}
+
+/* Defense in depth: iOS Safari zooms on focus when an input/textarea/select
+   font-size is below 16px. Set a 16px floor so we don't have to hand-audit
+   every form field for the magic number. Components can still override
+   upward (text-base, text-lg, etc.); they just can't go below 16px. */
+input,
+textarea,
+select {
+  font-size: max(16px, 1em);
+}
+
+/* Buttons feel sluggish in mobile Safari because of the legacy 300ms
+   double-tap-zoom delay. `manipulation` opts out. */
+button,
+[role="button"],
+a {
+  touch-action: manipulation;
 }
 
 /* Subtle film grain — gives the app a printed/editorial feel.

@@ -694,7 +694,7 @@ export function WorkoutSession({
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Notes (optional)"
           rows={2}
-          className="w-full px-3 py-2 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-sm transition-shadow placeholder:text-faint"
+          className="w-full px-3 py-2 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-base transition-shadow placeholder:text-faint"
         />
 
         <VideoUpload
@@ -1025,7 +1025,10 @@ function ReasonModal({
 }) {
   const [text, setText] = useState('');
   return (
-    <div className="fixed inset-0 z-50 bg-bg/85 backdrop-blur flex items-end sm:items-center justify-center p-4">
+    <div
+      className="fixed inset-0 z-50 bg-bg/85 backdrop-blur flex items-end sm:items-center justify-center p-4"
+      style={{ paddingBottom: 'max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))' }}
+    >
       <div className="w-full max-w-sm bg-surface rounded-2xl border border-border p-5 space-y-4 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)]">
         <h3 className="text-lg font-semibold">{title}</h3>
         {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
@@ -1035,7 +1038,7 @@ function ReasonModal({
           placeholder="Reason"
           autoFocus
           rows={3}
-          className="w-full px-3 py-2 rounded-xl bg-bg border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-sm transition-shadow placeholder:text-faint"
+          className="w-full px-3 py-2 rounded-xl bg-bg border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-base transition-shadow placeholder:text-faint"
         />
         <div className="space-y-2">
           {actions.map((a) => (

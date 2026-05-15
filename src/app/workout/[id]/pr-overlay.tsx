@@ -32,6 +32,10 @@ export function PrOverlay({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-bg/90 backdrop-blur-sm cursor-pointer"
+      style={{
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
       onClick={onDismiss}
       role="alert"
       aria-live="assertive"
