@@ -80,7 +80,7 @@ export type ExerciseWithStatus = {
   prescriptionRaw: string | null;
   isCardio: boolean;
   status: ExerciseStatus;
-  suggestion: Suggestion | null;  // from lib/suggestions.ts
+  suggestion: Suggestion | null;  // from lib/suggestions.ts; null when status='good'
 };
 
 export type DayWithExercises = {
@@ -93,7 +93,11 @@ export type DayWithExercises = {
 
 export type ClientIssues = {
   client: { id: string; name: string; weeklyDayTarget: number };
+  daysDoneThisWeek: number;       // for the header's "N/target days this week" line
   days: DayWithExercises[];
+  allSuggestions: Suggestion[];   // raw list, used by Apply-all + skipped-day banner lookup
+  hasActionableIssues: boolean;
+  issueCount: number;
   applyAllCount: number;          // count of suggestions auto-applyable without user choice (excludes swap_exercise)
 };
 
@@ -129,11 +133,13 @@ export type WorkoutRow = {
 };
 
 export type SetDetail = {
-  setIndex: number;
+  setNumber: number;
   weight: number | null;
+  unit: 'kg' | 'lb' | null;
   reps: number | null;
-  rpe: number | null;
+  rir: number | null;
   videoUrl: string | null;
+  notes: string | null;
   isPR: boolean;
 };
 
@@ -154,7 +160,7 @@ export type WorkoutDetail = {
 
 export async function listClientWeeks(clientId: string): Promise<WeekRow[] | null>;
 export async function getWeekWorkouts(clientId: string, weekStart: string): Promise<WorkoutRow[] | null>;
-export async function getWorkoutDetail(workoutId: string): Promise<WorkoutDetail | null>;
+export async function getWorkoutDetail(clientId: string, weekStart: string, workoutId: string): Promise<WorkoutDetail | null>;
 ```
 
 Implementation notes:
@@ -243,10 +249,10 @@ Full per-set log. For each exercise in the workout:
 Bench Press
 3 sets · 8-10 RIR 2                                           ←  prescription_raw
 
-  Set  Weight   Reps   RPE   Video    PR
-  1    100 kg    8      8    —        —
-  2    105 kg    8      9    [▶]      ✓
-  3    105 kg    7     10    —        —
+  Set  Weight   Reps   RIR   Video    PR
+  1    100 kg    8      2    —        —
+  2    105 kg    8      1    [▶]      ✓
+  3    105 kg    7      0    —        —
 
 Pain note: "Right shoulder twinge on set 3"                   ←  if pain_reason
 Note: "felt strong"                                           ←  if client_note
@@ -255,6 +261,7 @@ Note: "felt strong"                                           ←  if client_not
 - `prescribedSets` and `prescriptionRaw` shown as subtitle.
 - PR column: ✓ when `best_efforts.source_set_id === set.id`.
 - Video column: small play-icon link if `video_url` present; em-dash otherwise.
+- `notes` column shows per-set client notes if present (below the table row).
 
 ## Error handling
 
