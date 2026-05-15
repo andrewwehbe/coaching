@@ -74,7 +74,7 @@ export function IosInstallHint() {
       <button
         type="button"
         onClick={dismiss}
-        className="text-muted hover:text-text transition-colors text-xs px-2 py-1 -mr-1"
+        className="-mr-2 -mt-1 text-muted hover:text-text transition-colors text-base h-11 w-11 flex items-center justify-center"
         aria-label="Dismiss install hint"
       >
         ✕

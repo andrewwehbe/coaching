@@ -98,6 +98,15 @@ a {
   touch-action: manipulation;
 }
 
+/* Prevent long-press from selecting button text on iOS — it pops up the
+   text-selection context menu instead of feeling like a tap. */
+button,
+[role="button"] {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 /* Subtle film grain — gives the app a printed/editorial feel.
    Painted via overlay blend so it integrates with content beneath
    instead of covering it. */
