@@ -7,6 +7,7 @@ import { parsePrescription } from '@/lib/sheet-parser';
 import { nameKeyFor, normalize } from '@/lib/exercise-name';
 import { sendPushToClient } from '@/lib/push';
 import { log } from '@/lib/log';
+import { migrateBestEffortKey } from '@/lib/best-effort';
 
 type Params = Promise<{ id: string }>;
 
@@ -148,8 +149,11 @@ export async function POST(req: Request, ctx: { params: Params }) {
 
       if (ex.id && existingExByName.has(ex.id)) {
         incomingExerciseIds.add(ex.id);
+        const oldNameKey = existingExByName.get(ex.id)!.name_key;
         // Regenerate name_key whenever the name changes; that's how a "swap"
-        // resets the cue to "Log first set" without touching best_efforts.
+        // resets the cue to "Log first set". The migrate call below copies
+        // (without deleting) the existing best_efforts row to the new key so
+        // a rename doesn't visually erase the client's PR.
         const { error } = await supa
           .from('exercises')
           .update({
@@ -169,6 +173,9 @@ export async function POST(req: Request, ctx: { params: Params }) {
         if (error) {
           log.error('program.save.ex_update', error, { exerciseId: ex.id, clientId });
           return NextResponse.json({ error: 'Failed to update exercise' }, { status: 500 });
+        }
+        if (oldNameKey !== newNameKey) {
+          await migrateBestEffortKey(clientId, oldNameKey, newNameKey);
         }
         savedExercises.push({ id: ex.id });
       } else {
