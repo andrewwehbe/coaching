@@ -126,6 +126,35 @@ eq(
   { daySkipped: 'skipped_day', e1Status: 'good' },
 );
 
+// ---------- enumerateMondaysBetween ----------
+
+import { enumerateMondaysBetween } from '../src/lib/client-history';
+
+eq(
+  'history: single week range yields one Monday',
+  enumerateMondaysBetween('2026-05-04', '2026-05-04'),
+  ['2026-05-04'],
+);
+
+eq(
+  'history: 3 consecutive Mondays',
+  enumerateMondaysBetween('2026-04-20', '2026-05-04'),
+  ['2026-04-20', '2026-04-27', '2026-05-04'],
+);
+
+eq(
+  'history: start after end → empty',
+  enumerateMondaysBetween('2026-05-04', '2026-04-20'),
+  [],
+);
+
+eq(
+  'history: non-Monday start gets snapped to ISO Monday of that week',
+  // Wed 2026-04-22 → Monday 2026-04-20
+  enumerateMondaysBetween('2026-04-22', '2026-04-27'),
+  ['2026-04-20', '2026-04-27'],
+);
+
 // ---------- summary ----------
 
 if (failed > 0) {
