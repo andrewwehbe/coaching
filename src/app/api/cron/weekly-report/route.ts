@@ -33,7 +33,7 @@ async function handle(req: Request): Promise<NextResponse> {
   await sendPushToCoach({
     title: '📊 Weekly report',
     body: lines.join(' · '),
-    url: '/coach/weekly',
+    url: '/coach/status',
   });
 
   return NextResponse.json({
