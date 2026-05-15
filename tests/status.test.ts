@@ -155,6 +155,22 @@ eq(
   ['2026-04-20', '2026-04-27'],
 );
 
+// ---------- best-effort.beats ----------
+
+import { beats } from '../src/lib/best-effort';
+
+eq('beats: no current → always wins', beats(null, null, 80, 8), true);
+eq('beats: heavier wins', beats(100, 5, 105, 3), true);
+eq('beats: lighter loses', beats(100, 5, 95, 10), false);
+eq('beats: tie within epsilon, more reps wins', beats(100, 5, 100, 6), true);
+eq('beats: tie within epsilon, fewer reps loses', beats(100, 8, 100, 6), false);
+eq('beats: tie within epsilon, same reps does NOT count as new PR', beats(100, 5, 100, 5), false);
+// 100 kg = 220.46226... lb exactly. Logging 220.46226 lb should tie 100 kg
+// rather than fall through to "lighter" due to float precision.
+eq('beats: float-precision tie counts as tie, more reps wins', beats(100, 5, 220.46226 * 0.45359237, 6), true);
+eq('beats: float-precision tie with same reps loses', beats(100, 5, 220.46226 * 0.45359237, 5), false);
+eq('beats: current reps null + matching weight + new reps → wins', beats(100, null, 100, 5), true);
+
 // ---------- summary ----------
 
 if (failed > 0) {
