@@ -74,11 +74,11 @@ export default async function CoachHome() {
               <span aria-hidden className="absolute left-0 right-0 -bottom-px h-px bg-text/0 group-hover:bg-text/40 transition-colors" />
             </Link>
             <Link
-              href="/coach/weekly"
+              href="/coach/status"
               prefetch={false}
               className="group relative pb-0.5 text-muted hover:text-text transition-colors"
             >
-              Weekly report
+              Status
               <span aria-hidden className="absolute left-0 right-0 -bottom-px h-px bg-text/0 group-hover:bg-text/40 transition-colors" />
             </Link>
           </div>
