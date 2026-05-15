@@ -279,3 +279,147 @@ export async function getWeekWorkouts(
     };
   });
 }
+
+export type SetDetail = {
+  setNumber: number;
+  weight: number | null;
+  unit: 'kg' | 'lb' | null;
+  reps: number | null;
+  rir: number | null;
+  videoUrl: string | null;
+  notes: string | null;
+  isPR: boolean;
+};
+
+export type ExerciseLogDetail = {
+  exerciseId: string;
+  name: string;
+  prescribedSets: number | null;
+  prescriptionRaw: string | null;
+  painReason: string | null;
+  clientNote: string | null;
+  sets: SetDetail[];
+};
+
+export type WorkoutDetail = {
+  workout: {
+    id: string;
+    clientId: string;
+    dayLabel: string;
+    startedAt: string;
+    completedAt: string | null;
+    weekStart: string;
+  };
+  exercises: ExerciseLogDetail[];
+};
+
+/**
+ * Full per-set workout log. Returns null when the workout doesn't exist or
+ * doesn't belong to the given client/week.
+ */
+export async function getWorkoutDetail(
+  clientId: string,
+  weekStart: string,
+  workoutId: string,
+): Promise<WorkoutDetail | null> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) return null;
+  const supa = db();
+
+  const { data: workout } = await supa
+    .from('workouts')
+    .select(
+      'id, client_id, day_id, started_at, completed_at, week_start, days(label)',
+    )
+    .eq('id', workoutId)
+    .maybeSingle();
+  if (!workout) return null;
+  if (workout.client_id !== clientId) return null;
+  if (workout.week_start !== weekStart) return null;
+
+  const { data: logs } = await supa
+    .from('exercise_logs')
+    .select(
+      'id, exercise_id, pain_reason, client_note, exercises(name, prescribed_sets, prescription_raw, position)',
+    )
+    .eq('workout_id', workoutId);
+
+  const logIds = (logs ?? []).map((l) => l.id);
+  const { data: sets } = logIds.length
+    ? await supa
+        .from('sets')
+        .select('id, exercise_log_id, set_number, weight, unit, reps, rir, video_url, notes')
+        .in('exercise_log_id', logIds)
+        .order('set_number', { ascending: true })
+    : { data: [] as Array<{
+        id: string;
+        exercise_log_id: string;
+        set_number: number;
+        weight: number | string | null;
+        unit: string | null;
+        reps: number | null;
+        rir: number | null;
+        video_url: string | null;
+        notes: string | null;
+      }> };
+
+  // PR set ids for this client.
+  const { data: prs } = await supa
+    .from('best_efforts')
+    .select('source_set_id')
+    .eq('client_id', clientId)
+    .not('source_set_id', 'is', null);
+
+  const prSetIds = new Set<string>();
+  for (const p of prs ?? []) if (p.source_set_id) prSetIds.add(p.source_set_id);
+
+  const setsByLog = new Map<string, SetDetail[]>();
+  for (const s of sets ?? []) {
+    const arr = setsByLog.get(s.exercise_log_id) ?? [];
+    arr.push({
+      setNumber: s.set_number,
+      weight: s.weight === null ? null : Number(s.weight),
+      unit: s.unit === 'kg' || s.unit === 'lb' ? s.unit : null,
+      reps: s.reps,
+      rir: s.rir,
+      videoUrl: s.video_url,
+      notes: s.notes,
+      isPR: prSetIds.has(s.id),
+    });
+    setsByLog.set(s.exercise_log_id, arr);
+  }
+
+  const exercises: ExerciseLogDetail[] = (logs ?? [])
+    .map((l) => {
+      const exRaw = l.exercises as unknown;
+      const ex = (Array.isArray(exRaw) ? exRaw[0] : exRaw) as
+        | { name?: string; prescribed_sets?: number | null; prescription_raw?: string | null; position?: number }
+        | null;
+      return {
+        exerciseId: l.exercise_id,
+        name: ex?.name ?? '—',
+        prescribedSets: ex?.prescribed_sets ?? null,
+        prescriptionRaw: ex?.prescription_raw ?? null,
+        painReason: l.pain_reason,
+        clientNote: l.client_note,
+        sets: setsByLog.get(l.id) ?? [],
+        _position: ex?.position ?? 0,
+      };
+    })
+    .sort((a, b) => a._position - b._position)
+    .map(({ _position, ...rest }) => rest);
+
+  const daysRaw = workout.days as unknown;
+  const day = (Array.isArray(daysRaw) ? daysRaw[0] : daysRaw) as { label?: string } | null;
+
+  return {
+    workout: {
+      id: workout.id,
+      clientId: workout.client_id,
+      dayLabel: day?.label ?? '—',
+      startedAt: workout.started_at,
+      completedAt: workout.completed_at,
+      weekStart: workout.week_start,
+    },
+    exercises,
+  };
+}
