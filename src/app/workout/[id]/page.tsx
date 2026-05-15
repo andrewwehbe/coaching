@@ -41,6 +41,8 @@ export default async function WorkoutPage(props: { params: Params }) {
   ]);
 
   if (!workout || workout.client_id !== user.id) notFound();
+  // Completed workouts have a canonical URL: the summary screen.
+  if (workout.completed_at) redirect(`/workout/${id}/summary`);
   const logMode: 'sets' | 'best' =
     clientPrefs?.log_mode === 'best' ? 'best' : 'sets';
 

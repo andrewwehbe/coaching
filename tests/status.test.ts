@@ -219,6 +219,87 @@ eq(
   'Up 9.5 lb from your last PR',
 );
 
+// ---------- session-summary helpers ----------
+
+import { topSetOf, exerciseDelta } from '../src/lib/session-summary';
+
+eq(
+  'topSetOf: empty → null',
+  topSetOf([]),
+  null,
+);
+
+eq(
+  'topSetOf: picks heaviest',
+  topSetOf([
+    { weight: 80, unit: 'kg', reps: 8 },
+    { weight: 100, unit: 'kg', reps: 3 },
+    { weight: 90, unit: 'kg', reps: 6 },
+  ]),
+  { weight: 100, unit: 'kg', reps: 3 },
+);
+
+eq(
+  'topSetOf: ties on weight → most reps wins',
+  topSetOf([
+    { weight: 100, unit: 'kg', reps: 3 },
+    { weight: 100, unit: 'kg', reps: 5 },
+    { weight: 100, unit: 'kg', reps: 4 },
+  ]),
+  { weight: 100, unit: 'kg', reps: 5 },
+);
+
+eq(
+  'topSetOf: ignores null weight/reps',
+  topSetOf([
+    { weight: null, unit: null, reps: null },
+    { weight: 80, unit: 'kg', reps: 8 },
+  ]),
+  { weight: 80, unit: 'kg', reps: 8 },
+);
+
+eq(
+  'exerciseDelta: no prior session',
+  exerciseDelta({ weight: 100, unit: 'kg', reps: 5 }, null),
+  { kind: 'first' },
+);
+
+eq(
+  'exerciseDelta: heavier this time',
+  exerciseDelta(
+    { weight: 105, unit: 'kg', reps: 5 },
+    { weight: 100, unit: 'kg', reps: 5 },
+  ),
+  { kind: 'better', text: '+5 kg vs last' },
+);
+
+eq(
+  'exerciseDelta: same weight more reps',
+  exerciseDelta(
+    { weight: 100, unit: 'kg', reps: 7 },
+    { weight: 100, unit: 'kg', reps: 5 },
+  ),
+  { kind: 'better', text: '+2 reps vs last' },
+);
+
+eq(
+  'exerciseDelta: matched last session',
+  exerciseDelta(
+    { weight: 100, unit: 'kg', reps: 5 },
+    { weight: 100, unit: 'kg', reps: 5 },
+  ),
+  { kind: 'tied', text: 'Matched last session' },
+);
+
+eq(
+  'exerciseDelta: lighter this time',
+  exerciseDelta(
+    { weight: 95, unit: 'kg', reps: 5 },
+    { weight: 100, unit: 'kg', reps: 5 },
+  ),
+  { kind: 'worse', text: '-5 kg vs last' },
+);
+
 // ---------- summary ----------
 
 if (failed > 0) {

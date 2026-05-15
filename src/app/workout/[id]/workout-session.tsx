@@ -436,7 +436,7 @@ export function WorkoutSession({
           paths: ['/today', '/trends'],
         });
       } catch {}
-      router.refresh();
+      router.push(`/workout/${workoutId}/summary`);
     } finally {
       setSubmitting(false);
     }
