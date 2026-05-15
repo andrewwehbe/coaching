@@ -40,6 +40,52 @@ export function beats(
   return currentReps == null || newReps > currentReps;
 }
 
+export type BestSnapshot = {
+  weight: number;
+  unit: 'kg' | 'lb' | string | null;
+  reps: number;
+};
+
+/**
+ * Pure: human-readable delta string for the PR overlay. Uses the new set's
+ * unit when displaying weight deltas (so a client logging in lb sees lb).
+ *
+ * - First PR (no prior best): "First PR for this exercise"
+ * - Weight PR: "Up X kg from your last PR" (1 decimal, trailing .0 stripped)
+ * - Rep PR (same weight within epsilon): "+N rep[s] at the same weight"
+ *
+ * Exported for unit tests.
+ */
+export function prDeltaMessage(prev: BestSnapshot | null, next: BestSnapshot): string {
+  if (prev == null) return 'First PR for this exercise';
+
+  const newKg = toKg(next.weight, next.unit);
+  const prevKg = toKg(prev.weight, prev.unit);
+
+  // Tie band → rep PR.
+  if (Math.abs(newKg - prevKg) <= TIE_EPSILON_KG) {
+    const delta = next.reps - prev.reps;
+    return `+${delta} rep${delta === 1 ? '' : 's'} at the same weight`;
+  }
+
+  // Convert prev to next's unit so the delta is shown in the unit the user
+  // just logged in.
+  const prevInNextUnit = next.unit === 'lb' ? prevKg / LB_TO_KG : prevKg;
+  const deltaInNextUnit = next.weight - prevInNextUnit;
+  const unit = next.unit === 'lb' ? 'lb' : 'kg';
+  return `Up ${formatDelta(deltaInNextUnit)} ${unit} from your last PR`;
+}
+
+function formatDelta(n: number): string {
+  // 1-decimal, strip trailing .0.
+  const rounded = Math.round(n * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+export type UpsertResult =
+  | { updated: true; prMessage: string }
+  | { updated: false; reason: string };
+
 export async function upsertBestEffortFromSet(
   clientId: string,
   exerciseNameKey: string,
@@ -47,7 +93,7 @@ export async function upsertBestEffortFromSet(
   unit: string | null | undefined,
   reps: number | null | undefined,
   setId: string,
-): Promise<{ updated: boolean; reason?: string }> {
+): Promise<UpsertResult> {
   if (weight == null || reps == null) return { updated: false, reason: 'missing_weight_or_reps' };
   if (!exerciseNameKey) {
     log.warn('best_effort.skip', { reason: 'empty_name_key', clientId, setId });
@@ -92,7 +138,15 @@ export async function upsertBestEffortFromSet(
   }
 
   log.info('best_effort.updated', { clientId, exerciseNameKey, setId, weight, unit, reps });
-  return { updated: true };
+
+  const prev: BestSnapshot | null =
+    current?.best_weight == null
+      ? null
+      : { weight: Number(current.best_weight), unit: current.best_unit, reps: current.best_reps };
+  return {
+    updated: true,
+    prMessage: prDeltaMessage(prev, { weight, unit: unit ?? null, reps }),
+  };
 }
 
 /**

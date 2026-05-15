@@ -90,8 +90,9 @@ export async function POST(req: Request, props: { params: Params }) {
   }
 
   // Update best_efforts only for non-cardio sets.
+  let prMessage: string | null = null;
   if (!ex.is_cardio) {
-    await upsertBestEffortFromSet(
+    const result = await upsertBestEffortFromSet(
       ctx.user.id,
       ex.name_key,
       setRow.weight,
@@ -99,7 +100,13 @@ export async function POST(req: Request, props: { params: Params }) {
       setRow.reps,
       setRow.id
     );
+    if (result.updated) prMessage = result.prMessage;
   }
 
-  return NextResponse.json({ ok: true, setId: setRow.id, logId: log.id });
+  return NextResponse.json({
+    ok: true,
+    setId: setRow.id,
+    logId: log.id,
+    pr: prMessage ? { message: prMessage } : null,
+  });
 }

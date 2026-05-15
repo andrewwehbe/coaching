@@ -10,6 +10,7 @@ import { RestTimer } from '@/components/rest-timer';
 import { OfflineBanner } from '@/components/offline-banner';
 import { enqueueAndSend, flushQueue, pendingCount } from '@/lib/offline-queue';
 import { MAX_VIDEO_BYTES } from '@/lib/config';
+import { PrOverlay } from './pr-overlay';
 
 export type LoggedSet = {
   setNumber: number;
@@ -77,6 +78,7 @@ export function WorkoutSession({
   const [submitting, setSubmitting] = useState(false);
   const [pending, setPending] = useState(0);
   const [online, setOnline] = useState(true);
+  const [prMessage, setPrMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setOnline(typeof navigator === 'undefined' ? true : navigator.onLine);
@@ -226,6 +228,11 @@ export function WorkoutSession({
         const err = await res.json().catch(() => ({}));
         alert(err.error ?? 'Failed to save set');
         return;
+      }
+      // Real-time only: 202 means queued offline, no PR data to show.
+      if (res.ok) {
+        const data = await res.clone().json().catch(() => null);
+        if (data?.pr?.message) setPrMessage(data.pr.message);
       }
 
       // Update local state. The DB upserts on (exercise_log_id, set_number),
@@ -496,6 +503,7 @@ export function WorkoutSession({
 
   return (
     <main className="flex flex-1 flex-col px-5 py-6 max-w-md w-full mx-auto">
+      <PrOverlay message={prMessage} onDismiss={() => setPrMessage(null)} />
       <header className="flex items-center justify-between mb-3 text-sm">
         <Link href="/today" className="text-muted hover:text-text transition-colors">
           ← {dayLabel}

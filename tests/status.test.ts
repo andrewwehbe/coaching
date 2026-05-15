@@ -171,6 +171,54 @@ eq('beats: float-precision tie counts as tie, more reps wins', beats(100, 5, 220
 eq('beats: float-precision tie with same reps loses', beats(100, 5, 220.46226 * 0.45359237, 5), false);
 eq('beats: current reps null + matching weight + new reps → wins', beats(100, null, 100, 5), true);
 
+// ---------- best-effort.prDeltaMessage ----------
+
+import { prDeltaMessage } from '../src/lib/best-effort';
+
+eq(
+  'prDelta: first PR (no prior best)',
+  prDeltaMessage(null, { weight: 100, unit: 'kg', reps: 5 }),
+  'First PR for this exercise',
+);
+
+eq(
+  'prDelta: weight PR same unit',
+  prDeltaMessage({ weight: 95, unit: 'kg', reps: 6 }, { weight: 100, unit: 'kg', reps: 5 }),
+  'Up 5 kg from your last PR',
+);
+
+eq(
+  'prDelta: weight PR with fractional delta',
+  prDeltaMessage({ weight: 100, unit: 'kg', reps: 5 }, { weight: 102.5, unit: 'kg', reps: 5 }),
+  'Up 2.5 kg from your last PR',
+);
+
+eq(
+  'prDelta: rep PR (same weight, more reps)',
+  prDeltaMessage({ weight: 100, unit: 'kg', reps: 5 }, { weight: 100, unit: 'kg', reps: 7 }),
+  '+2 reps at the same weight',
+);
+
+eq(
+  'prDelta: rep PR singular',
+  prDeltaMessage({ weight: 100, unit: 'kg', reps: 5 }, { weight: 100, unit: 'kg', reps: 6 }),
+  '+1 rep at the same weight',
+);
+
+eq(
+  'prDelta: weight PR across units shows new unit',
+  // 200 lb = 90.7185 kg; new is 100 kg → up 9.3 kg.
+  prDeltaMessage({ weight: 200, unit: 'lb', reps: 5 }, { weight: 100, unit: 'kg', reps: 5 }),
+  'Up 9.3 kg from your last PR',
+);
+
+eq(
+  'prDelta: lb new unit displayed in lb',
+  prDeltaMessage({ weight: 100, unit: 'kg', reps: 5 }, { weight: 230, unit: 'lb', reps: 5 }),
+  // 100 kg = 220.46 lb; new is 230 lb → up 9.5 lb.
+  'Up 9.5 lb from your last PR',
+);
+
 // ---------- summary ----------
 
 if (failed > 0) {
