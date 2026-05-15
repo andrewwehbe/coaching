@@ -1,16 +1,18 @@
 /* Coaching app service worker.
    Strategy:
    - Precache /offline so navigation always has a fallback when network fails.
-   - Stale-while-revalidate for navigation HTML — return cache instantly, refresh
-     in the background. Saves a full HTML round-trip on every "quick check"
-     (the dominant cellular cost for clients who just open the app to log a set).
+   - Network-first for navigation HTML. /today, /workout, the coach pages etc.
+     are all week/state-dependent — serving a stale-while-revalidate copy made
+     clients see last week's "done" days on the first visit of a new week, so we
+     always hit the network and only fall back to cache (then /offline) when the
+     network is unreachable.
    - Cache-first for /icons + /_next/static — long-lived hashed assets.
    - Never cache API responses (would leak stale logs / sessions).
    - Logout posts {type:'clear-cache'} so a different user on the same device
      doesn't see the previous user's cached HTML.
 */
 
-const VERSION = 'v6';
+const VERSION = 'v7';
 const APP_CACHE = `coaching-app-${VERSION}`;
 const STATIC_CACHE = `coaching-static-${VERSION}`;
 const OFFLINE_URL = '/offline';
@@ -52,39 +54,28 @@ self.addEventListener('fetch', (event) => {
   // Never cache API or auth — always go to network.
   if (url.pathname.startsWith('/api/')) return;
 
-  // Navigation requests: stale-while-revalidate.
-  // - If we have a cached version, serve it instantly and refresh in background.
-  // - Otherwise wait for network, fall back to /offline if it fails.
+  // Navigation requests: network-first, fall back to a cached copy, then /offline.
+  // Always prefer the network so week/state-dependent pages (/today, /workout,
+  // coach pages) are never stale.
   if (req.mode === 'navigate') {
     event.respondWith(
       (async () => {
         const cache = await caches.open(APP_CACHE);
-        const cached = await cache.match(req);
-
-        const networkPromise = fetch(req)
-          .then((res) => {
-            // Only cache successful HTML responses. Don't cache redirects (auth
-            // bounces) or errors.
-            if (res.ok && res.type === 'basic') {
-              cache.put(req, res.clone()).catch(() => {});
-            }
-            return res;
-          })
-          .catch(() => null);
-
-        if (cached) {
-          // Fire-and-forget the background refresh so the next nav is fresh.
-          event.waitUntil(networkPromise);
-          return cached;
+        try {
+          const fresh = await fetch(req);
+          // Keep a copy only as an offline fallback — don't serve it preemptively.
+          if (fresh.ok && fresh.type === 'basic') {
+            cache.put(req, fresh.clone()).catch(() => {});
+          }
+          return fresh;
+        } catch {
+          const cached = await cache.match(req);
+          if (cached) return cached;
+          const offline = await cache.match(OFFLINE_URL);
+          return (
+            offline ?? new Response('Offline', { status: 503, statusText: 'offline' })
+          );
         }
-
-        const fresh = await networkPromise;
-        if (fresh) return fresh;
-
-        const offline = await cache.match(OFFLINE_URL);
-        return (
-          offline ?? new Response('Offline', { status: 503, statusText: 'offline' })
-        );
       })()
     );
     return;
