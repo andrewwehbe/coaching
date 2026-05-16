@@ -79,6 +79,10 @@ export function WorkoutSession({
   const [pending, setPending] = useState(0);
   const [online, setOnline] = useState(true);
   const [prMessage, setPrMessage] = useState<string | null>(null);
+  // When a PR celebrates on a non-final set, we want the overlay to show alone
+  // and start the rest timer only after the user (or auto-dismiss) closes it.
+  // This flag carries that intent across the gap.
+  const [pendingRestAfterPr, setPendingRestAfterPr] = useState(false);
 
   useEffect(() => {
     setOnline(typeof navigator === 'undefined' ? true : navigator.onLine);
@@ -230,9 +234,13 @@ export function WorkoutSession({
         return;
       }
       // Real-time only: 202 means queued offline, no PR data to show.
+      let firedPr = false;
       if (res.ok) {
         const data = await res.clone().json().catch(() => null);
-        if (data?.pr?.message) setPrMessage(data.pr.message);
+        if (data?.pr?.message) {
+          setPrMessage(data.pr.message);
+          firedPr = true;
+        }
       }
 
       // Update local state. The DB upserts on (exercise_log_id, set_number),
@@ -278,6 +286,12 @@ export function WorkoutSession({
       } else if (isLastPrescribed) {
         // Move to next exercise; no rest needed.
         setResting(false);
+      } else if (firedPr) {
+        // PR overlay is taking the screen; rest timer would stack on top of it
+        // (same z-index, later DOM order). Defer the timer until the overlay
+        // dismisses so the celebration shows alone.
+        setResting(false);
+        setPendingRestAfterPr(true);
       } else {
         setResting(true);
       }
@@ -503,7 +517,16 @@ export function WorkoutSession({
 
   return (
     <main className="flex flex-1 flex-col px-5 py-6 max-w-md w-full mx-auto">
-      <PrOverlay message={prMessage} onDismiss={() => setPrMessage(null)} />
+      <PrOverlay
+        message={prMessage}
+        onDismiss={() => {
+          setPrMessage(null);
+          if (pendingRestAfterPr) {
+            setPendingRestAfterPr(false);
+            setResting(true);
+          }
+        }}
+      />
       <header className="flex items-center justify-between mb-3 text-sm">
         <Link href="/today" className="text-muted hover:text-text transition-colors">
           ← {dayLabel}
