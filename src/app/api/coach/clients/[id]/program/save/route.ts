@@ -8,6 +8,7 @@ import { nameKeyFor, normalize } from '@/lib/exercise-name';
 import { sendPushToClient } from '@/lib/push';
 import { log } from '@/lib/log';
 import { migrateBestEffortKey } from '@/lib/best-effort';
+import { recordProgramRevision } from '@/lib/program-revision';
 
 type Params = Promise<{ id: string }>;
 
@@ -249,6 +250,15 @@ export async function POST(req: Request, ctx: { params: Params }) {
     .from('programs')
     .update({ last_edited_at: new Date().toISOString() })
     .eq('id', program.id);
+
+  // Snapshot the post-edit state for the revision history. Best-effort —
+  // a snapshot failure is logged but does not fail the save (history is
+  // additional context, not load-bearing).
+  await recordProgramRevision({
+    programId: program.id,
+    editedBy: user.id,
+    reason: 'edit',
+  });
 
   await supa.from('audit_log').insert({
     actor_type: 'coach',

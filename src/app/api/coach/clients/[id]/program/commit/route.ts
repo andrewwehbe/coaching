@@ -4,6 +4,7 @@ import { readSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { parseSheet } from '@/lib/sheet-parser';
 import { sendPushToClient } from '@/lib/push';
+import { recordProgramRevision } from '@/lib/program-revision';
 
 type Params = Promise<{ id: string }>;
 
@@ -99,6 +100,14 @@ export async function POST(req: Request, ctx: { params: Params }) {
       }
     }
   }
+
+  // Snapshot the freshly-uploaded program as revision 1. Best-effort —
+  // a snapshot failure is logged but does not fail the upload.
+  await recordProgramRevision({
+    programId: program.id,
+    editedBy: user.id,
+    reason: 'sheet_upload',
+  });
 
   await supa.from('audit_log').insert({
     actor_type: 'coach',
