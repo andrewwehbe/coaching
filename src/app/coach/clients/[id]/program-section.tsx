@@ -11,6 +11,7 @@ type Exercise = {
   prescription_raw: string | null;
   coach_note: string | null;
   archived_at: string | null;
+  muscle_group: string | null;
 };
 
 type Day = {
@@ -119,6 +120,11 @@ function ExerciseRow({ exercise }: { exercise: Exercise }) {
         <p className="font-medium">
           <span className="text-faint mr-2">{exercise.position}.</span>
           {exercise.name}
+          {exercise.muscle_group && (
+            <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-faint">
+              {exercise.muscle_group}
+            </span>
+          )}
         </p>
         <p className="text-xs text-faint shrink-0">{exercise.prescription_raw ?? ''}</p>
       </div>

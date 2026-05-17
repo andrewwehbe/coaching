@@ -348,13 +348,18 @@ export function WorkoutSession({
     }
   }
 
-  async function submitPain(reason: string, proceed: boolean) {
+  async function submitPain(
+    reason: string,
+    painType: 'joint' | 'tendon' | 'muscle' | null,
+    proceed: boolean,
+  ) {
     if (modal.kind !== 'pain') return;
     setSubmitting(true);
     try {
       const res = await enqueueAndSend(`/api/client/workout/${workoutId}/pain`, {
         exerciseId: modal.exerciseId,
         reason,
+        pain_type: painType,
         proceed,
       });
       if (!res.ok && res.status !== 202) {
@@ -816,23 +821,13 @@ export function WorkoutSession({
         />
       )}
       {modal.kind === 'pain' && (
-        <ReasonModal
+        <PainModal
           title={`Report pain on ${modal.name}`}
           subtitle="Your coach will be notified either way."
           onCancel={() => setModal({ kind: 'none' })}
           submitting={submitting}
-          actions={[
-            {
-              label: 'Continue with exercise',
-              tone: 'primary',
-              onClick: (r) => submitPain(r, true),
-            },
-            {
-              label: 'Skip exercise',
-              tone: 'danger',
-              onClick: (r) => submitPain(r, false),
-            },
-          ]}
+          onContinue={(r, t) => submitPain(r, t, true)}
+          onSkip={(r, t) => submitPain(r, t, false)}
         />
       )}
     </main>
@@ -1032,6 +1027,106 @@ type ModalAction = {
   tone: 'primary' | 'danger';
   onClick: (reason: string) => void;
 };
+
+type PainType = 'joint' | 'tendon' | 'muscle';
+
+const PAIN_TYPE_OPTS: Array<{ value: PainType; label: string; hint: string }> = [
+  { value: 'joint', label: 'Joint', hint: 'sharp, in a joint' },
+  { value: 'tendon', label: 'Tendon', hint: 'localized to a tendon' },
+  { value: 'muscle', label: 'Muscle', hint: 'diffuse, in the muscle' },
+];
+
+function PainModal({
+  title,
+  subtitle,
+  onContinue,
+  onSkip,
+  onCancel,
+  submitting,
+}: {
+  title: string;
+  subtitle?: string;
+  onContinue: (reason: string, painType: PainType | null) => void;
+  onSkip: (reason: string, painType: PainType | null) => void;
+  onCancel: () => void;
+  submitting: boolean;
+}) {
+  const [text, setText] = useState('');
+  const [painType, setPainType] = useState<PainType | null>(null);
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-bg/85 backdrop-blur flex items-end sm:items-center justify-center p-4"
+      style={{ paddingBottom: 'max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))' }}
+    >
+      <div className="w-full max-w-sm bg-surface rounded-2xl border border-border p-5 space-y-4 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)]">
+        <h3 className="text-lg font-semibold">{title}</h3>
+        {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
+
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.22em] text-faint mb-2">
+            Type
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {PAIN_TYPE_OPTS.map((o) => {
+              const active = painType === o.value;
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setPainType(active ? null : o.value)}
+                  aria-pressed={active}
+                  className={
+                    'rounded-lg border px-2 py-2 text-left transition-colors ' +
+                    (active
+                      ? 'border-primary bg-primary/15 text-primary-hi'
+                      : 'border-border bg-bg hover:border-primary/40 text-text')
+                  }
+                >
+                  <span className="block text-xs font-medium">{o.label}</span>
+                  <span className="block text-[10px] text-faint mt-0.5">{o.hint}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="What does it feel like?"
+          autoFocus
+          rows={3}
+          className="w-full px-3 py-2 rounded-xl bg-bg border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-base transition-shadow placeholder:text-faint"
+        />
+        <div className="space-y-2">
+          <button
+            type="button"
+            disabled={!text.trim() || submitting}
+            onClick={() => onContinue(text.trim(), painType)}
+            className="w-full h-11 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors bg-primary hover:bg-primary-hi text-bg"
+          >
+            Continue with exercise
+          </button>
+          <button
+            type="button"
+            disabled={!text.trim() || submitting}
+            onClick={() => onSkip(text.trim(), painType)}
+            className="w-full h-11 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors bg-danger hover:bg-danger/90 text-bg"
+          >
+            Skip exercise
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="w-full h-11 rounded-xl border border-border text-sm font-medium text-text hover:bg-surface-2 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ReasonModal({
   title,

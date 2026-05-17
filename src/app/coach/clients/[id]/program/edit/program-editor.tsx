@@ -3,11 +3,39 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+type MuscleGroup =
+  | 'chest'
+  | 'back'
+  | 'quads'
+  | 'hamstrings'
+  | 'glutes'
+  | 'shoulders'
+  | 'biceps'
+  | 'triceps'
+  | 'calves'
+  | 'abs'
+  | 'other';
+
+const MUSCLE_OPTIONS: MuscleGroup[] = [
+  'chest',
+  'back',
+  'quads',
+  'hamstrings',
+  'glutes',
+  'shoulders',
+  'biceps',
+  'triceps',
+  'calves',
+  'abs',
+  'other',
+];
+
 type DraftExercise = {
   id?: string; // present for existing rows; undefined for new
   name: string;
   prescription_raw: string;
   coach_note: string;
+  muscle_group: MuscleGroup | null;
 };
 
 type DraftDay = {
@@ -46,9 +74,15 @@ export function ProgramEditor({
     update((prev) =>
       prev.map((d, i) =>
         i === di
-          ? { ...d, exercises: [...d.exercises, { name: '', prescription_raw: '3x5-8', coach_note: '' }] }
-          : d
-      )
+          ? {
+              ...d,
+              exercises: [
+                ...d.exercises,
+                { name: '', prescription_raw: '3x5-8', coach_note: '', muscle_group: null },
+              ],
+            }
+          : d,
+      ),
     );
   }
 
@@ -100,6 +134,7 @@ export function ProgramEditor({
           name: e.name.trim(),
           prescription_raw: e.prescription_raw.trim(),
           coach_note: e.coach_note.trim() || null,
+          muscle_group: e.muscle_group,
         })),
       }));
       for (const d of cleaned) {
@@ -189,6 +224,23 @@ export function ProgramEditor({
                     placeholder="3x5-8"
                     className="w-28 bg-bg/40 rounded-lg border border-border px-2.5 py-1.5 text-sm focus:outline-none focus:border-primary/50"
                   />
+                  <select
+                    value={ex.muscle_group ?? ''}
+                    onChange={(e) =>
+                      updateEx(di, ei, {
+                        muscle_group: (e.target.value || null) as MuscleGroup | null,
+                      })
+                    }
+                    title="Primary muscle group (drives per-muscle volume recommendations)"
+                    className="bg-bg/40 rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:border-primary/50"
+                  >
+                    <option value="">muscle…</option>
+                    {MUSCLE_OPTIONS.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
                   <input
                     value={ex.coach_note}
                     onChange={(e) => updateEx(di, ei, { coach_note: e.target.value })}

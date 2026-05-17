@@ -3,6 +3,7 @@ import 'server-only';
 import { startOfWeek, formatISO, subDays } from 'date-fns';
 
 import { db } from './supabase';
+import { computeProgramContext, type ProgramContext } from './program-week';
 
 export type ClientStatus = 'on_track' | 'behind' | 'inactive' | 'pain';
 
@@ -15,6 +16,13 @@ export type ClientSummary = {
   lastActivityAt: string | null;
   status: ClientStatus;
   unackPainCount: number;
+  /**
+   * Where this client sits in their current program — week counter, weeks
+   * since last deload, weeks since the program was last edited. Used by the
+   * coach roster as context for whether a stall / suggestion is "real."
+   * All fields are null/0 when the client has no active program.
+   */
+  programContext: ProgramContext;
 };
 
 /**
@@ -43,7 +51,13 @@ export async function listClientSummaries(): Promise<ClientSummary[]> {
 
   const ids = clients.map((c) => c.id);
 
-  const [{ data: weekWorkouts }, { data: lastWorkouts }, { data: painAlerts }] = await Promise.all([
+  const [
+    { data: weekWorkouts },
+    { data: lastWorkouts },
+    { data: painAlerts },
+    { data: activePrograms },
+    { data: deloadRows },
+  ] = await Promise.all([
     supa
       .from('workouts')
       .select('client_id, day_id, completed_at, started_at')
@@ -60,6 +74,16 @@ export async function listClientSummaries(): Promise<ClientSummary[]> {
       .in('client_id', ids)
       .eq('type', 'pain')
       .is('acknowledged_at', null),
+    supa
+      .from('programs')
+      .select('client_id, training_start_at, uploaded_at, last_edited_at')
+      .in('client_id', ids)
+      .eq('active', true)
+      .order('uploaded_at', { ascending: false }),
+    supa
+      .from('client_deload_weeks')
+      .select('client_id, week_start')
+      .in('client_id', ids),
   ]);
 
   const daysByClient = new Map<string, Set<string>>();
@@ -80,6 +104,27 @@ export async function listClientSummaries(): Promise<ClientSummary[]> {
   const painCountByClient = new Map<string, number>();
   for (const a of painAlerts ?? []) {
     painCountByClient.set(a.client_id, (painCountByClient.get(a.client_id) ?? 0) + 1);
+  }
+
+  // Most recent active program per client. Ordered desc above; first wins.
+  const programByClient = new Map<
+    string,
+    { training_start_at: string | null; uploaded_at: string; last_edited_at: string | null }
+  >();
+  for (const p of activePrograms ?? []) {
+    if (programByClient.has(p.client_id)) continue;
+    programByClient.set(p.client_id, {
+      training_start_at: p.training_start_at,
+      uploaded_at: p.uploaded_at,
+      last_edited_at: p.last_edited_at,
+    });
+  }
+
+  const deloadsByClient = new Map<string, string[]>();
+  for (const d of deloadRows ?? []) {
+    const arr = deloadsByClient.get(d.client_id) ?? [];
+    arr.push(d.week_start);
+    deloadsByClient.set(d.client_id, arr);
   }
 
   // Day-of-week (Mon=0 … Sun=6).
@@ -105,6 +150,19 @@ export async function listClientSummaries(): Promise<ClientSummary[]> {
       status = behindByVolume || stale ? 'behind' : 'on_track';
     }
 
+    const prog = programByClient.get(c.id);
+    const programContext = computeProgramContext(
+      prog
+        ? {
+            trainingStartAt: prog.training_start_at,
+            uploadedAt: prog.uploaded_at,
+            lastEditedAt: prog.last_edited_at,
+            deloadWeekStarts: deloadsByClient.get(c.id) ?? [],
+          }
+        : null,
+      now,
+    );
+
     return {
       id: c.id,
       name: c.name,
@@ -114,6 +172,7 @@ export async function listClientSummaries(): Promise<ClientSummary[]> {
       lastActivityAt,
       status,
       unackPainCount: painCount,
+      programContext,
     };
   });
 }

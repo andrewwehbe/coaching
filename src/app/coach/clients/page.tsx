@@ -3,6 +3,7 @@ import { formatDistanceToNow } from 'date-fns';
 
 import { requireCoach } from '@/lib/coach-guard';
 import { listClientSummaries, type ClientStatus } from '@/lib/clients';
+import type { ProgramContext } from '@/lib/program-week';
 import { Chip, PageHeader } from '../ui';
 
 export const dynamic = 'force-dynamic';
@@ -74,6 +75,7 @@ export default async function ClientsPage() {
                       </>
                     )}
                   </p>
+                  <ProgramContextLine ctx={c.programContext} />
                 </div>
                 <StatusChip status={c.status} />
               </Link>
@@ -82,6 +84,28 @@ export default async function ClientsPage() {
         </ul>
       )}
     </main>
+  );
+}
+
+function ProgramContextLine({ ctx }: { ctx: ProgramContext }) {
+  if (ctx.weekInProgram == null) return null;
+  const parts: string[] = [`Wk ${ctx.weekInProgram}`];
+  if (ctx.weeksSinceLastDeload != null) {
+    parts.push(
+      ctx.weeksSinceLastDeload === 0
+        ? 'deload this wk'
+        : `${ctx.weeksSinceLastDeload}w since deload`,
+    );
+  } else {
+    parts.push('no deload yet');
+  }
+  if (ctx.weeksSinceUpload != null && ctx.weeksSinceUpload >= 1) {
+    parts.push(`edited ${ctx.weeksSinceUpload}w ago`);
+  }
+  return (
+    <p className="mt-1 text-[10px] sm:text-[11px] uppercase tracking-[0.18em] text-faint/70 tabular-nums">
+      {parts.join(' · ')}
+    </p>
   );
 }
 

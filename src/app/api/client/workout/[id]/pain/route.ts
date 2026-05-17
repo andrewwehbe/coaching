@@ -8,6 +8,10 @@ import { insertAlert } from '@/lib/notify';
 const Body = z.object({
   exerciseId: z.string().uuid(),
   reason: z.string().min(1).max(2000),
+  // joint | tendon | muscle — drives the recommender's pain gate (see
+  // research brief Q5). Optional for backward compat; null is treated
+  // under the conservative joint rule by the recommender.
+  pain_type: z.enum(['joint', 'tendon', 'muscle']).nullish(),
   // false (default): pain == skip the exercise; status becomes 'pain' and the
   // workout advances. true: client chose to continue logging this exercise
   // anyway. Status stays 'completed' so the regular /set route can keep
@@ -46,6 +50,7 @@ export async function POST(req: Request, props: { params: Params }) {
         exercise_id: parsed.data.exerciseId,
         status: parsed.data.proceed ? 'completed' : 'pain',
         pain_reason: parsed.data.reason,
+        pain_type: parsed.data.pain_type ?? null,
       },
       { onConflict: 'workout_id,exercise_id' }
     );
@@ -62,6 +67,7 @@ export async function POST(req: Request, props: { params: Params }) {
       exercise_id: parsed.data.exerciseId,
       exercise_name: ex.name,
       reason: parsed.data.reason,
+      pain_type: parsed.data.pain_type ?? null,
     },
   });
 

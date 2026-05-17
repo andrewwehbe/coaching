@@ -94,6 +94,7 @@ export type SessionSummary = {
     startedAt: string;
     completedAt: string | null;
     durationMinutes: number | null;
+    sessionRpe: number | null;
   };
   exercises: ExerciseSummary[];
   totals: {
@@ -115,7 +116,7 @@ export async function buildSessionSummary(workoutId: string): Promise<SessionSum
 
   const { data: workout, error: wErr } = await supa
     .from('workouts')
-    .select('id, client_id, day_id, started_at, completed_at, days(label)')
+    .select('id, client_id, day_id, started_at, completed_at, session_rpe, days(label)')
     .eq('id', workoutId)
     .maybeSingle();
   if (wErr || !workout) return null;
@@ -285,6 +286,7 @@ export async function buildSessionSummary(workoutId: string): Promise<SessionSum
       startedAt: workout.started_at,
       completedAt: workout.completed_at,
       durationMinutes,
+      sessionRpe: (workout as { session_rpe?: number | null }).session_rpe ?? null,
     },
     exercises,
     totals: {

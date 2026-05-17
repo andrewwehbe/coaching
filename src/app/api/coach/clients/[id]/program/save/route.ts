@@ -11,6 +11,20 @@ import { migrateBestEffortKey } from '@/lib/best-effort';
 
 type Params = Promise<{ id: string }>;
 
+const MUSCLE_GROUPS = [
+  'chest',
+  'back',
+  'quads',
+  'hamstrings',
+  'glutes',
+  'shoulders',
+  'biceps',
+  'triceps',
+  'calves',
+  'abs',
+  'other',
+] as const;
+
 const Body = z.object({
   days: z
     .array(
@@ -23,6 +37,7 @@ const Body = z.object({
             name: z.string().trim().min(1).max(200),
             prescription_raw: z.string().trim().min(1).max(120),
             coach_note: z.string().trim().max(2000).nullable().optional(),
+            muscle_group: z.enum(MUSCLE_GROUPS).nullable().optional(),
           })
         ),
       })
@@ -167,6 +182,7 @@ export async function POST(req: Request, ctx: { params: Params }) {
             rir_target: rx.rir,
             is_cardio: rx.is_cardio,
             coach_note: ex.coach_note?.trim() || null,
+            muscle_group: ex.muscle_group ?? null,
             archived_at: null,
           })
           .eq('id', ex.id);
@@ -193,6 +209,7 @@ export async function POST(req: Request, ctx: { params: Params }) {
             rir_target: rx.rir,
             is_cardio: rx.is_cardio,
             coach_note: ex.coach_note?.trim() || null,
+            muscle_group: ex.muscle_group ?? null,
           })
           .select('id')
           .single();
@@ -225,6 +242,13 @@ export async function POST(req: Request, ctx: { params: Params }) {
   // Days are not deleted in this editor — workouts reference them by FK,
   // so removing one would orphan history. Days only ever get added or renamed.
   // (To "delete" a day, the coach can re-upload the program from scratch.)
+
+  // Bump last_edited_at so the coach roster's "edited Xw ago" counter
+  // reflects in-place edits. Original uploaded_at is preserved.
+  await supa
+    .from('programs')
+    .update({ last_edited_at: new Date().toISOString() })
+    .eq('id', program.id);
 
   await supa.from('audit_log').insert({
     actor_type: 'coach',

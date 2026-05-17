@@ -14,7 +14,8 @@ import {
   SUGGEST_WATCH_MIN as WATCH_MIN,
   SUGGEST_ADJUST_MIN as ADJUST_MIN,
   SUGGEST_SWAP_MIN as SWAP_MIN,
-  SUGGEST_SWAP_MIN_PROGRAM_WEEK as SWAP_MIN_PROGRAM_WEEK,
+  swapMinProgramWeekFor,
+  type TrainingAge,
   ADHERENCE_LOOKBACK_WEEKS,
   ADHERENCE_MIN_DAYS,
 } from './config';
@@ -84,19 +85,30 @@ export async function buildSuggestionsByClient(
   // Fetch active programs + days + exercises for each client.
   // Also fetch historical_exposures so we can prepend pre-app data
   // (parsed from coach's sheets via scripts/import-history.ts) ahead of
-  // in-app workouts for the plateau analysis.
-  const [{ data: programs }, { data: historical }] = await Promise.all([
-    supa
-      .from('programs')
-      .select('id, client_id, uploaded_at, training_start_at, days(id, day_index, label, exercises(id, name, name_key, prescribed_sets, archived_at))')
-      .in('client_id', clientIds)
-      .eq('active', true),
-    supa
-      .from('historical_exposures')
-      .select('client_id, exercise_name_key, week_index, weight, unit, reps')
-      .in('client_id', clientIds)
-      .order('week_index', { ascending: true }),
-  ]);
+  // in-app workouts for the plateau analysis. clients.training_age gates
+  // when a stall escalates to swap_candidate (see swapMinProgramWeekFor).
+  const [{ data: programs }, { data: historical }, { data: clientRows }] =
+    await Promise.all([
+      supa
+        .from('programs')
+        .select('id, client_id, uploaded_at, training_start_at, days(id, day_index, label, exercises(id, name, name_key, prescribed_sets, archived_at))')
+        .in('client_id', clientIds)
+        .eq('active', true),
+      supa
+        .from('historical_exposures')
+        .select('client_id, exercise_name_key, week_index, weight, unit, reps')
+        .in('client_id', clientIds)
+        .order('week_index', { ascending: true }),
+      supa
+        .from('clients')
+        .select('id, training_age')
+        .in('id', clientIds),
+    ]);
+
+  const trainingAgeByClient = new Map<string, TrainingAge | null>();
+  for (const c of clientRows ?? []) {
+    trainingAgeByClient.set(c.id, (c.training_age ?? null) as TrainingAge | null);
+  }
 
   type ExRow = { id: string; name: string; name_key: string; prescribed_sets: number | null; archived_at: string | null };
   type DayRow = { id: string; day_index: number; label: string; exercises: ExRow[] };
@@ -223,6 +235,8 @@ export async function buildSuggestionsByClient(
       ? Math.max(1, differenceInCalendarWeeks(at, programAnchor, { weekStartsOn: 1 }) + 1)
       : 1;
 
+    const swapMinWeek = swapMinProgramWeekFor(trainingAgeByClient.get(cid) ?? null);
+
     if (!adherenceLow && prog) {
       // Build per-name exercise log history.
       const nameToLogs = new Map<string, ExerciseLogRow[]>();
@@ -309,9 +323,10 @@ export async function buildSuggestionsByClient(
         let stage: 'watch' | 'adjust' | 'swap_candidate' =
           stalled >= SWAP_MIN ? 'swap_candidate' : stalled >= ADJUST_MIN ? 'adjust' : 'watch';
 
-        // Phase/week downgrade — without a phase column we only apply the
-        // early-program guard. Add the phase rule once the column exists.
-        if (stage === 'swap_candidate' && programWeekNumber < SWAP_MIN_PROGRAM_WEEK) {
+        // Phase/week downgrade — gated by training_age (novice = never swap;
+        // intermediate = wk 6+; advanced = wk 4+). For the not-yet-set case
+        // we fall back to the intermediate default.
+        if (stage === 'swap_candidate' && programWeekNumber < swapMinWeek) {
           stage = 'adjust';
         }
 

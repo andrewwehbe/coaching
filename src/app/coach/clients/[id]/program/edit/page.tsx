@@ -46,7 +46,9 @@ export default async function EditProgramPage(props: { params: Params }) {
 
   const { data: days } = await supa
     .from('days')
-    .select('id, day_index, label, exercises(id, position, name, prescription_raw, coach_note, archived_at)')
+    .select(
+      'id, day_index, label, exercises(id, position, name, prescription_raw, coach_note, archived_at, muscle_group)',
+    )
     .eq('program_id', program.id)
     .order('day_index');
 
@@ -61,6 +63,19 @@ export default async function EditProgramPage(props: { params: Params }) {
         name: e.name,
         prescription_raw: e.prescription_raw ?? '',
         coach_note: e.coach_note ?? '',
+        muscle_group: (e.muscle_group ?? null) as
+          | 'chest'
+          | 'back'
+          | 'quads'
+          | 'hamstrings'
+          | 'glutes'
+          | 'shoulders'
+          | 'biceps'
+          | 'triceps'
+          | 'calves'
+          | 'abs'
+          | 'other'
+          | null,
       })),
   }));
 

@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 
 import { loadClientWorkout } from '@/lib/workout-guard';
 import { buildSessionSummary, type ExerciseSummary } from '@/lib/session-summary';
+import { SrpePrompt } from './srpe-prompt';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,6 +73,8 @@ export default async function WorkoutSummaryPage(props: { params: Params }) {
           ))}
         </ul>
       )}
+
+      <SrpePrompt workoutId={summary.workout.id} initial={summary.workout.sessionRpe} />
 
       <Link
         href="/today"

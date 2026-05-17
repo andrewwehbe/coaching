@@ -5,6 +5,7 @@ type SkipPainRow = {
   status: string;
   skip_reason: string | null;
   pain_reason: string | null;
+  pain_type?: string | null;
   created_at: string;
   exercises: { name: string } | { name: string }[] | null;
 };
@@ -60,6 +61,9 @@ export function SkipPainSection({ rows }: { rows: SkipPainRow[] }) {
                     }`}
                   >
                     {tone}
+                    {tone === 'pain' && row.pain_type && (
+                      <span className="ml-1 text-danger/70">· {row.pain_type}</span>
+                    )}
                   </span>
                   {exerciseName(row)}
                 </p>
