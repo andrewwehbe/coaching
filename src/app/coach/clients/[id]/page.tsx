@@ -181,6 +181,9 @@ export default async function ClientDetailPage(props: { params: Params }) {
             {client.log_mode === 'best' && (
               <Chip className="border-accent/40 bg-accent/8 text-accent">Best-set log</Chip>
             )}
+            {client.log_mode === 'all' && (
+              <Chip className="border-accent/40 bg-accent/8 text-accent">All-sets log</Chip>
+            )}
             {client.training_age && (
               <Chip className="border-border bg-surface/40 text-muted capitalize">
                 {client.training_age}
@@ -249,7 +252,13 @@ export default async function ClientDetailPage(props: { params: Params }) {
         clientId={client.id}
         active={client.active}
         currentWeekIsDeload={currentWeekIsDeload}
-        logMode={client.log_mode === 'best' ? 'best' : 'sets'}
+        logMode={
+          client.log_mode === 'best'
+            ? 'best'
+            : client.log_mode === 'all'
+              ? 'all'
+              : 'sets'
+        }
       />
 
       {recResult && (

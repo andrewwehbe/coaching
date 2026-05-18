@@ -31,7 +31,7 @@ const Patch = z.object({
   body_weight_freq: z.enum(['none', 'daily', '3x', 'weekly']).optional(),
   photo_check_in_enabled: z.boolean().optional(),
   meal_plan_enabled: z.boolean().optional(),
-  log_mode: z.enum(['sets', 'best']).optional(),
+  log_mode: z.enum(['sets', 'best', 'all']).optional(),
   active: z.boolean().optional(),
 });
 

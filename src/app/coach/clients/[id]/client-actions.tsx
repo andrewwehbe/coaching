@@ -12,7 +12,7 @@ export function ClientActions({
   clientId: string;
   active: boolean;
   currentWeekIsDeload: boolean;
-  logMode: 'sets' | 'best';
+  logMode: 'sets' | 'best' | 'all';
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -20,7 +20,7 @@ export function ClientActions({
   const [newPin, setNewPin] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function setLogMode(next: 'sets' | 'best') {
+  async function setLogMode(next: 'sets' | 'best' | 'all') {
     if (next === logMode) return;
     setBusy('logmode');
     setError(null);
@@ -132,7 +132,7 @@ export function ClientActions({
           Log mode
         </p>
         <div className="inline-flex rounded-lg border border-border bg-surface/40 p-0.5">
-          {(['sets', 'best'] as const).map((mode) => (
+          {(['sets', 'best', 'all'] as const).map((mode) => (
             <button
               key={mode}
               type="button"
@@ -144,14 +144,16 @@ export function ClientActions({
                   : 'text-muted hover:text-text'
               }`}
             >
-              {mode === 'sets' ? 'Per-set' : 'Best set only'}
+              {mode === 'sets' ? 'Per-set' : mode === 'best' ? 'Best set only' : 'All sets'}
             </button>
           ))}
         </div>
         <p className="mt-1.5 text-[11px] text-faint">
           {logMode === 'best'
             ? 'Client logs one entry per exercise — taken as the session best.'
-            : 'Client logs every set individually.'}
+            : logMode === 'all'
+              ? 'Client logs every prescribed set on one screen per exercise; next session shows the full set list (no Beat-X cue).'
+              : 'Client logs every set individually, set-by-set.'}
         </p>
       </div>
 

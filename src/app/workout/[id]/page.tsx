@@ -4,6 +4,7 @@ import { readSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { buildCue, type Best, type Prescription } from '@/lib/cue';
 import { WorkoutSession, type ExerciseState } from './workout-session';
+import { WorkoutSessionAll, type ExerciseStateAll } from './workout-session-all';
 
 type LoggedSetRow = {
   set_number: number;
@@ -43,8 +44,12 @@ export default async function WorkoutPage(props: { params: Params }) {
   if (!workout || workout.client_id !== user.id) notFound();
   // Completed workouts have a canonical URL: the summary screen.
   if (workout.completed_at) redirect(`/workout/${id}/summary`);
-  const logMode: 'sets' | 'best' =
-    clientPrefs?.log_mode === 'best' ? 'best' : 'sets';
+  const logMode: 'sets' | 'best' | 'all' =
+    clientPrefs?.log_mode === 'best'
+      ? 'best'
+      : clientPrefs?.log_mode === 'all'
+        ? 'all'
+        : 'sets';
 
   // day, exercises, logs are all keyed off workout.day_id / workout.id and
   // independent of each other — parallel fetch.
@@ -113,6 +118,98 @@ export default async function WorkoutPage(props: { params: Params }) {
       })),
     };
   });
+
+  if (logMode === 'all') {
+    // Fetch prior-session sets. We anchor on the most recent COMPLETED workout
+    // for this same day_id (not just any workout where the exercise appeared) —
+    // that matches what the client trained last time on this day and avoids
+    // mixing in stray sets from a different split.
+    const { data: priorWorkout } = await supa
+      .from('workouts')
+      .select('id')
+      .eq('client_id', user.id)
+      .eq('day_id', workout.day_id)
+      .not('completed_at', 'is', null)
+      .neq('id', workout.id)
+      .order('completed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    type PriorLog = {
+      exercise_id: string;
+      exercises: { name_key: string } | { name_key: string }[];
+      sets: LoggedSetRow[];
+    };
+    const priorByNameKey = new Map<string, LoggedSetRow[]>();
+    const priorByExerciseId = new Map<string, LoggedSetRow[]>();
+    if (priorWorkout) {
+      const { data: priorLogs } = (await supa
+        .from('exercise_logs')
+        .select(`
+          exercise_id,
+          exercises:exercises!inner(name_key),
+          sets(set_number, weight, unit, reps, rir, cardio_minutes, video_url, notes)
+        `)
+        .eq('workout_id', priorWorkout.id)
+        .eq('status', 'completed')) as { data: PriorLog[] | null };
+      for (const l of priorLogs ?? []) {
+        const nameKey = Array.isArray(l.exercises) ? l.exercises[0]?.name_key : l.exercises?.name_key;
+        const sets = (l.sets ?? []).slice().sort((a, b) => a.set_number - b.set_number);
+        if (nameKey) priorByNameKey.set(nameKey, sets);
+        priorByExerciseId.set(l.exercise_id, sets);
+      }
+    }
+
+    const allStates: ExerciseStateAll[] = (exercises ?? []).map((ex) => {
+      const log = (logs ?? []).find((l) => l.exercise_id === ex.id) ?? null;
+      const priorRaw =
+        priorByExerciseId.get(ex.id) ?? priorByNameKey.get(ex.name_key) ?? [];
+      const prior = priorRaw.map((s) => ({
+        setNumber: s.set_number,
+        weight: s.weight,
+        unit: s.unit,
+        reps: s.reps,
+        rir: s.rir,
+        cardioMinutes: s.cardio_minutes,
+        videoUrl: s.video_url,
+        notes: s.notes,
+      }));
+      return {
+        id: ex.id,
+        name: ex.name,
+        position: ex.position,
+        prescriptionRaw: ex.prescription_raw,
+        prescribedSets: ex.prescribed_sets,
+        repMin: ex.rep_min,
+        repMax: ex.rep_max,
+        coachNote: ex.coach_note,
+        isCardio: ex.is_cardio,
+        cardioType: ex.cardio_type,
+        logStatus: log?.status ?? null,
+        sets: ((log?.sets as LoggedSetRow[] | undefined) ?? []).map((s) => ({
+          setNumber: s.set_number,
+          weight: s.weight,
+          unit: s.unit,
+          reps: s.reps,
+          rir: s.rir,
+          cardioMinutes: s.cardio_minutes,
+          videoUrl: s.video_url,
+          notes: s.notes,
+        })),
+        priorSets: prior,
+      };
+    });
+
+    return (
+      <WorkoutSessionAll
+        workoutId={workout.id}
+        dayLabel={day?.label ?? 'Workout'}
+        completed={!!workout.completed_at}
+        isDeload={!!workout.is_deload}
+        exercises={allStates}
+      />
+    );
+  }
 
   return (
     <WorkoutSession
