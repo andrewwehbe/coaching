@@ -209,6 +209,31 @@ export function WorkoutSessionAll({
     });
   }
 
+  // Copy this row's working numbers down to every other row on the same
+  // exercise. Notes stay per-row (typically per-set commentary). Lets ClientE
+  // log 3x of the same weight/reps without typing it three times.
+  function applyRowToAll(exerciseId: string, sourceIdx: number) {
+    setRowsByExerciseId((prev) => {
+      const rows = prev[exerciseId] ?? [];
+      const src = rows[sourceIdx];
+      if (!src) return prev;
+      const next = rows.map((r, i) =>
+        i === sourceIdx
+          ? r
+          : {
+              ...r,
+              weight: src.weight,
+              reps: src.reps,
+              rir: src.rir,
+              unit: src.unit,
+              cardioMin: src.cardioMin,
+              dirty: true,
+            },
+      );
+      return { ...prev, [exerciseId]: next };
+    });
+  }
+
   function advanceFrom(updated: ExerciseStateAll[], fromIdx: number): number {
     for (let i = fromIdx + 1; i < updated.length; i++) {
       if (updated[i].logStatus == null) return i;
@@ -525,6 +550,11 @@ export function WorkoutSessionAll({
             isCardio={current.isCardio}
             onChange={(patch) => updateRow(current.id, idx, patch)}
             onRemove={rows.length > 1 ? () => removeRow(current.id, idx) : null}
+            onApplyToAll={
+              rows.length > 1 && !isRowEmpty(row, current.isCardio)
+                ? () => applyRowToAll(current.id, idx)
+                : null
+            }
           />
         ))}
 
@@ -611,27 +641,44 @@ function SetRow({
   isCardio,
   onChange,
   onRemove,
+  onApplyToAll,
 }: {
   setNumber: number;
   row: RowDraft;
   isCardio: boolean;
   onChange: (patch: Partial<RowDraft>) => void;
   onRemove: (() => void) | null;
+  onApplyToAll: (() => void) | null;
 }) {
+  const rowControls = (
+    <div className="flex items-center gap-3">
+      {onApplyToAll && (
+        <button
+          type="button"
+          onClick={onApplyToAll}
+          className="text-[10px] uppercase tracking-[0.14em] text-primary-hi hover:text-primary transition-colors"
+          title="Copy this set's numbers to every set"
+        >
+          Apply to all
+        </button>
+      )}
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="text-[10px] text-faint hover:text-danger transition-colors"
+        >
+          Remove
+        </button>
+      )}
+    </div>
+  );
   if (isCardio) {
     return (
       <div className="rounded-2xl border border-border bg-surface/40 px-3 py-3">
         <div className="flex items-center justify-between mb-2">
           <p className="text-[10px] uppercase tracking-[0.18em] text-faint">Set {setNumber}</p>
-          {onRemove && (
-            <button
-              type="button"
-              onClick={onRemove}
-              className="text-[10px] text-faint hover:text-danger transition-colors"
-            >
-              Remove
-            </button>
-          )}
+          {rowControls}
         </div>
         <label className="block">
           <span className="text-xs text-muted">Minutes</span>
@@ -650,15 +697,7 @@ function SetRow({
     <div className="rounded-2xl border border-border bg-surface/40 px-3 py-3">
       <div className="flex items-center justify-between mb-2">
         <p className="text-[10px] uppercase tracking-[0.18em] text-faint">Set {setNumber}</p>
-        {onRemove && (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="text-[10px] text-faint hover:text-danger transition-colors"
-          >
-            Remove
-          </button>
-        )}
+        {rowControls}
       </div>
       <div className="grid grid-cols-12 gap-2 items-end">
         <label className="col-span-5">
