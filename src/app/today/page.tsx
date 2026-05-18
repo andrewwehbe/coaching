@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import { readSession } from '@/lib/auth';
 import { buildTodaySchedule } from '@/lib/schedule';
 import { linkForClient } from '@/lib/coach-link';
+import { getCheckInStatus } from '@/lib/check-in-status';
+import { db } from '@/lib/supabase';
 import { HeaderMenu } from '@/components/header-menu';
 import { LoadInView } from './load-in';
 
@@ -15,9 +17,21 @@ export default async function TodayPage() {
   if (user.type === 'coach') redirect('/coach');
   if (!user.active) redirect('/deactivated');
 
-  const [schedule, link] = await Promise.all([
+  const supa = db();
+  const { data: clientRow } = await supa
+    .from('clients')
+    .select('body_weight_freq, photo_check_in_enabled')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const [schedule, link, checkIn] = await Promise.all([
     buildTodaySchedule(user.id),
     linkForClient(user.id),
+    getCheckInStatus({
+      id: user.id,
+      body_weight_freq: (clientRow?.body_weight_freq ?? 'none') as 'none' | 'daily' | '3x' | 'weekly',
+      photo_check_in_enabled: clientRow?.photo_check_in_enabled ?? false,
+    }),
   ]);
 
   if (!schedule.programId) {
@@ -57,6 +71,7 @@ export default async function TodayPage() {
       }
       threeInARowWarning={schedule.threeInARowWarning}
       isDeloadWeek={schedule.isDeloadWeek}
+      checkIn={checkIn.enabled ? { due: checkIn.due, period: checkIn.period, done: checkIn.done, target: checkIn.target } : null}
       rightControls={
         <HeaderMenu
           switchKind={link ? 'switch-to-coach' : null}

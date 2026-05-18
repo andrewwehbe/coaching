@@ -1,8 +1,16 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type CSSProperties } from 'react';
 import './load-in.css';
+
+type CheckInPill = {
+  due: boolean;
+  period: 'day' | 'week';
+  done: number;
+  target: number;
+};
 
 type Day = {
   dayId: string;
@@ -38,6 +46,7 @@ export function LoadInView({
   suggested,
   threeInARowWarning,
   isDeloadWeek,
+  checkIn,
   rightControls,
 }: {
   greetingName: string;
@@ -45,6 +54,7 @@ export function LoadInView({
   suggested: Suggested;
   threeInARowWarning?: boolean;
   isDeloadWeek?: boolean;
+  checkIn?: CheckInPill | null;
   rightControls?: React.ReactNode;
 }) {
   const router = useRouter();
@@ -155,6 +165,8 @@ export function LoadInView({
           <p>2 days in a row · a third isn&rsquo;t recommended</p>
         </div>
       )}
+
+      {checkIn && <CheckInBanner pill={checkIn} />}
 
       <div className="loadin-stage" style={stageStyle}>
         <div className="loadin-flash" style={{ animation: flashAnim }} />
@@ -386,6 +398,32 @@ export function LoadInView({
         </div>
       )}
     </div>
+  );
+}
+
+function CheckInBanner({ pill }: { pill: CheckInPill }) {
+  const periodLabel = pill.period === 'day' ? 'today' : 'this week';
+  if (!pill.due) {
+    const doneLabel =
+      pill.target > 1
+        ? `Check-in ${pill.done}/${pill.target} ${periodLabel}`
+        : `Checked in ${periodLabel}`;
+    return (
+      <Link href="/check-in" className="loadin-checkin loadin-checkin-done">
+        <span aria-hidden="true">✓</span>
+        <span>{doneLabel}</span>
+      </Link>
+    );
+  }
+  const dueLabel =
+    pill.target > 1
+      ? `Check-in due · ${pill.done}/${pill.target} ${periodLabel}`
+      : `Check-in due ${periodLabel}`;
+  return (
+    <Link href="/check-in" className="loadin-checkin loadin-checkin-due">
+      <span>{dueLabel}</span>
+      <span aria-hidden="true">→</span>
+    </Link>
   );
 }
 
