@@ -205,16 +205,31 @@ export function WorkoutSession({
       current?.prescribedSets != null &&
       setNumber >= current.prescribedSets;
 
-  async function submitSet() {
+  async function submitSet(opts?: { useLast?: boolean }) {
     if (!current) return;
+    const useLast = opts?.useLast === true;
+    const lastSet = useLast && current.sets.length > 0
+      ? current.sets[current.sets.length - 1]
+      : null;
+    if (useLast && (!lastSet || lastSet.weight == null || lastSet.reps == null)) return;
+    // "Same as previous" always appends a new set, never edits.
+    const effectiveSetNumber = useLast ? current.sets.length + 1 : setNumber;
+    const effectiveIsLast = useLast
+      ? current.prescribedSets != null && effectiveSetNumber >= current.prescribedSets
+      : isLastPrescribed;
     setSubmitting(true);
     try {
       const body: Record<string, unknown> = {
         exerciseId: current.id,
-        setNumber,
+        setNumber: effectiveSetNumber,
       };
       if (current.isCardio) {
         body.cardioMinutes = cardioMin ? Number(cardioMin) : null;
+      } else if (useLast && lastSet) {
+        body.weight = lastSet.weight;
+        body.unit = lastSet.unit ?? unit;
+        body.reps = lastSet.reps;
+        body.rir = null;
       } else {
         // Normalize comma decimal separator (Arabic/European keyboards) to dot
         // so Number() doesn't return NaN.
@@ -223,9 +238,9 @@ export function WorkoutSession({
         body.reps = reps ? Number(reps) : null;
         body.rir = rir ? Number(rir) : null;
       }
-      if (notes) body.notes = notes;
+      if (!useLast && notes) body.notes = notes;
       // videoUrl actually holds the bucket-relative storage path; server expects videoPath.
-      if (videoUrl) body.videoPath = videoUrl;
+      if (!useLast && videoUrl) body.videoPath = videoUrl;
 
       const res = await enqueueAndSend(`/api/client/workout/${workoutId}/set`, body);
       if (!res.ok && res.status !== 202) {
@@ -248,12 +263,12 @@ export function WorkoutSession({
       // this set_number already exists locally. That handles three cases
       // uniformly: explicit edit (editingSetNumber set), best-mode resubmit
       // (set_number always 1, may already exist), and a fresh new set.
-      const wasEditing = editingSetNumber != null;
+      const wasEditing = !useLast && editingSetNumber != null;
       setState((prev) => {
         const next = prev.map((e) => {
           if (e.id !== current.id) return e;
           const newSet: LoggedSet = {
-            setNumber,
+            setNumber: effectiveSetNumber,
             weight: body.weight as number | null,
             unit: (body.unit as 'kg' | 'lb' | undefined) ?? null,
             reps: body.reps as number | null,
@@ -262,19 +277,19 @@ export function WorkoutSession({
             videoUrl: (body.videoUrl as string | null) ?? null,
             notes: (body.notes as string | null) ?? null,
           };
-          const exists = e.sets.some((s) => s.setNumber === setNumber);
+          const exists = e.sets.some((s) => s.setNumber === effectiveSetNumber);
           const sets = exists
-            ? e.sets.map((s) => (s.setNumber === setNumber ? newSet : s))
+            ? e.sets.map((s) => (s.setNumber === effectiveSetNumber ? newSet : s))
             : [...e.sets, newSet];
           return {
             ...e,
             sets,
-            logStatus: (isLastPrescribed
+            logStatus: (effectiveIsLast
               ? 'completed'
               : e.logStatus) as ExerciseState['logStatus'],
           };
         });
-        if (isLastPrescribed) setCurrentIdx((idx) => advanceFrom(next, idx));
+        if (effectiveIsLast) setCurrentIdx((idx) => advanceFrom(next, idx));
         return next;
       });
 
@@ -283,7 +298,7 @@ export function WorkoutSession({
       if (wasEditing) {
         // Saving an edit doesn't trigger a rest — the user wasn't between sets.
         setResting(false);
-      } else if (isLastPrescribed) {
+      } else if (effectiveIsLast) {
         // Move to next exercise; no rest needed.
         setResting(false);
       } else if (firedPr) {
@@ -751,9 +766,28 @@ export function WorkoutSession({
           </button>
         </div>
 
+        {(() => {
+          if (bestMode || current.isCardio || editingSetNumber != null) return null;
+          if (current.sets.length === 0) return null;
+          const last = current.sets[current.sets.length - 1];
+          if (last.weight == null || last.reps == null) return null;
+          const unitLabel = last.unit ?? '';
+          return (
+            <button
+              type="button"
+              onClick={() => submitSet({ useLast: true })}
+              disabled={submitting}
+              className="w-full h-11 rounded-xl border border-border text-muted text-sm font-medium hover:bg-surface-2 hover:text-text transition-colors disabled:opacity-40"
+            >
+              Same as previous ({last.weight}
+              {unitLabel} × {last.reps})
+            </button>
+          );
+        })()}
+
         <button
           type="button"
-          onClick={submitSet}
+          onClick={() => submitSet()}
           disabled={submitting || isFormEmpty(current.isCardio, weight, reps, cardioMin)}
           className="w-full h-14 rounded-2xl bg-primary hover:bg-primary-hi active:bg-primary-press text-bg text-base font-semibold disabled:opacity-40 disabled:shadow-none transition-all shadow-[0_10px_40px_-12px_rgba(34,197,94,0.7)]"
         >
