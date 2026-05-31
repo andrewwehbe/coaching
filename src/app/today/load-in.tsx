@@ -324,7 +324,7 @@ export function LoadInView({
                   </text>
                   <StatusChip
                     cx={360}
-                    cy={plateHeight / 2}
+                    cy={plateHeight / 2 - 6}
                     label={
                       isDone
                         ? 'DONE'
