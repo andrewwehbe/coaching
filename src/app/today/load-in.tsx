@@ -60,14 +60,23 @@ export function LoadInView({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [confirmThree, setConfirmThree] = useState(false);
+  const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
 
   const sorted = [...days].sort((a, b) => a.dayIndex - b.dayIndex);
   const N = sorted.length;
   const plateHeight =
     N > 0 ? Math.floor((SLEEVE_BOTTOM - SLEEVE_TOP - (N - 1) * GAP) / N) : 140;
 
-  const currentIndex = suggested
-    ? sorted.findIndex((d) => d.dayId === suggested.dayId)
+  // Active day = explicit user pick (any non-done plate) ?? suggested default.
+  const fallbackActive: Day | null = suggested
+    ? sorted.find((d) => d.dayId === suggested.dayId) ?? null
+    : null;
+  const selectedActive: Day | null = selectedDayId
+    ? sorted.find((d) => d.dayId === selectedDayId && d.status !== 'done') ?? null
+    : null;
+  const activeDay: Day | null = selectedActive ?? fallbackActive;
+  const currentIndex = activeDay
+    ? sorted.findIndex((d) => d.dayId === activeDay.dayId)
     : -1;
 
   // Stack from top (newest = Day N) down to bottom (oldest = Day 1).
@@ -96,17 +105,19 @@ export function LoadInView({
   const buttonDelay = lastImpact + BUTTON_BUFFER;
 
   async function startNow() {
-    if (!suggested || busy) return;
+    if (!activeDay || busy) return;
+    const resuming =
+      !!activeDay.workoutId && activeDay.status === 'in_progress';
     setBusy(true);
     try {
-      if (suggested.workoutId) {
-        router.push(`/workout/${suggested.workoutId}`);
+      if (resuming) {
+        router.push(`/workout/${activeDay.workoutId}`);
         return;
       }
       const res = await fetch('/api/client/workout/start', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ dayId: suggested.dayId }),
+        body: JSON.stringify({ dayId: activeDay.dayId }),
       });
       if (!res.ok) {
         setBusy(false);
@@ -120,18 +131,21 @@ export function LoadInView({
   }
 
   function start() {
-    if (!suggested || busy) return;
-    if (threeInARowWarning && !suggested.workoutId) {
+    if (!activeDay || busy) return;
+    const resuming =
+      !!activeDay.workoutId && activeDay.status === 'in_progress';
+    if (threeInARowWarning && !resuming) {
       setConfirmThree(true);
       return;
     }
     void startNow();
   }
 
-  const buttonLabel = suggested
-    ? `Start ${shortLabel(suggested.label) || `Day ${currentIndex + 1}`}`
+  const buttonLabel = activeDay
+    ? `Start ${shortLabel(activeDay.label) || `Day ${currentIndex + 1}`}`
     : 'All done this week';
-  const startedAlready = !!suggested?.workoutId;
+  const startedAlready =
+    !!activeDay?.workoutId && activeDay?.status === 'in_progress';
 
   const stageStyle: CSSProperties = {
     animation: shakeAnim,
@@ -271,7 +285,11 @@ export function LoadInView({
               <g
                 key={day.dayId}
                 className="loadin-plate"
-                style={{ animationDelay: `${delay}ms` }}
+                style={{
+                  animationDelay: `${delay}ms`,
+                  cursor: isDone ? 'default' : 'pointer',
+                }}
+                onClick={isDone ? undefined : () => setSelectedDayId(day.dayId)}
               >
                 <g transform={`translate(0 ${yOffset})`}>
                   <rect
@@ -336,16 +354,16 @@ export function LoadInView({
           className="loadin-start"
           style={{ animationDelay: `${buttonDelay}ms` }}
           onClick={start}
-          disabled={!suggested || busy}
+          disabled={!activeDay || busy}
         >
           {busy
             ? 'Starting…'
-            : !suggested
+            : !activeDay
               ? 'All done this week'
               : startedAlready
                 ? `Resume Day ${currentIndex + 1}`
                 : buttonLabel}
-          {suggested && !busy && (
+          {activeDay && !busy && (
             <span className="arrow" aria-hidden="true">
               →
             </span>
