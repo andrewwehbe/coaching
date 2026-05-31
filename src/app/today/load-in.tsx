@@ -142,7 +142,7 @@ export function LoadInView({
   }
 
   const buttonLabel = activeDay
-    ? `Start ${shortLabel(activeDay.label) || `Day ${currentIndex + 1}`}`
+    ? `Start Day ${currentIndex + 1}`
     : 'All done this week';
   const startedAlready =
     !!activeDay?.workoutId && activeDay?.status === 'in_progress';
