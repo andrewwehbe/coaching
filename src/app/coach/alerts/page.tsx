@@ -1,5 +1,6 @@
 import { requireCoach } from '@/lib/coach-guard';
 import { db } from '@/lib/supabase';
+import type { AlertType } from '@/lib/alert-types';
 import { PageHeader, PaginationLink, Pill } from '../ui';
 import { AlertsList } from './alerts-list';
 
@@ -31,7 +32,11 @@ export default async function AlertsPage(props: { searchParams: SearchParams }) 
     return {
       id: a.id,
       client_id: a.client_id,
-      type: a.type,
+      // Supabase returns `type` as string; the DB CHECK constraint
+      // guarantees it's one of the AlertType literals. Cast at the
+      // boundary; the runtime fallback in alerts-list.tsx covers any
+      // value the bundle doesn't recognize (e.g. mid-rollback).
+      type: a.type as AlertType,
       message: a.message,
       created_at: a.created_at,
       acknowledged_at: a.acknowledged_at,
@@ -85,16 +90,7 @@ function buildUrl(offset: number, unack: boolean) {
 type AlertRow = {
   id: string;
   client_id: string;
-  type:
-    | 'pain'
-    | 'stalled'
-    | 'missed_workout'
-    | 'workout_started'
-    | 'workout_completed'
-    | 'workout_stale'
-    | 'check_in_due'
-    | 'check_in_submitted'
-    | 'missed_checkin';
+  type: AlertType;
   message: string;
   created_at: string;
   acknowledged_at: string | null;

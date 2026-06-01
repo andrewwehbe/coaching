@@ -57,6 +57,9 @@ type ProgramInput = {
   }>;
 };
 
+// Per-suggestion-type ExerciseStatus mapping. null means the
+// suggestion is NOT per-exercise — it attaches to a day, the program,
+// or the week, so it shouldn't flip an exercise's status pill.
 const TYPE_TO_STATUS: Record<Suggestion['type'], ExerciseStatus | null> = {
   watch: 'watch',
   adjust: 'adjust',
@@ -64,6 +67,14 @@ const TYPE_TO_STATUS: Record<Suggestion['type'], ExerciseStatus | null> = {
   pain: 'pain',
   adherence: null,
   skipped_day: null,
+  // Stage 4-6 additions — all program/week scope, not per-exercise.
+  // The fallback at the usage site (?? 'good') makes this defensive,
+  // but a null mapping documents intent: these don't change exercise
+  // status pills.
+  deload: null,
+  load_progression: null,
+  high_rir_stall: null,
+  weekly_note: null,
 };
 
 /**

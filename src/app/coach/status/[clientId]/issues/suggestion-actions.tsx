@@ -65,7 +65,7 @@ export function SuggestionRow({
     }
   }
 
-  const chip = TYPE_CHIPS[suggestion.type];
+  const chip = TYPE_CHIPS[suggestion.type] ?? UNKNOWN_CHIP;
   const applyHint =
     suggestion.apply?.kind === 'add_set'
       ? `Adds 1 set to ${suggestion.apply.targetName}`
@@ -180,6 +180,11 @@ export function SuggestionRow({
   );
 }
 
+// Per-suggestion-type chip styling. Suggestion['type'] is the single
+// source of truth (see src/lib/suggestions.ts). Missing a key here
+// compile-errors at the Record declaration the moment a new
+// Suggestion type is added — Vercel will catch the build failure
+// before deploy.
 const TYPE_CHIPS: Record<
   Suggestion['type'],
   { label: string; pillClass: string; cardClass: string }
@@ -214,4 +219,32 @@ const TYPE_CHIPS: Record<
     pillClass: 'bg-surface-2 text-muted border-border',
     cardClass: 'border-border bg-surface/40',
   },
+  // Stage 4 — fatigue / effort signals.
+  deload: {
+    label: 'Deload',
+    pillClass: 'bg-warn/15 text-warn border-warn/40',
+    cardClass: 'border-warn/30 bg-warn/8',
+  },
+  load_progression: {
+    label: 'Load up',
+    pillClass: 'bg-primary/15 text-primary-hi border-primary/35',
+    cardClass: 'border-primary/30 bg-primary/8',
+  },
+  high_rir_stall: {
+    label: 'Effort gap',
+    pillClass: 'bg-warn/10 text-warn border-warn/35',
+    cardClass: 'border-warn/25 bg-warn/5',
+  },
+  // Stage 5 — per-client weekly coaching note.
+  weekly_note: {
+    label: 'Weekly note',
+    pillClass: 'bg-surface-2 text-muted border-border',
+    cardClass: 'border-border bg-surface/40',
+  },
+};
+
+const UNKNOWN_CHIP = {
+  label: 'Suggestion',
+  pillClass: 'bg-surface-2 text-muted border-border',
+  cardClass: 'border-border bg-surface/40',
 };

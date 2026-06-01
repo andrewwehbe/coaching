@@ -5,10 +5,18 @@
  * matching this value, else 401. Vercel Cron is configured to send this
  * header (see vercel.json).
  *
- * For every active client, for every distinct exercise_name_key with at
- * least 4 logged exposures, computes consecutive_stalled and stage,
- * upserts stalled_history, fires an alert on escalation, and opens a
- * pending swap_proposals row when stage hits swap_candidate.
+ * For every active client, for every distinct exercise_name_key with
+ * enough logged sessions, classifies via signals/plateau (the same
+ * 8-stage classifier used by suggestions.ts and recommend-for-client.ts).
+ * Upserts stalled_history (persisted snapshot for retrospective
+ * analysis), fires an alert via the alert-mapping rules in
+ * signals/plateau.decideStalledAlert, and opens a pending swap_proposals
+ * row when stage === 'swap_candidate'.
+ *
+ * Stage 4.6: migrated off the retired plateau-wrapper exposures-based
+ * counter onto the 8-stage classifier. fatigue_stall is structurally
+ * impossible from this surface (rirDriftAcrossBlock is intentionally
+ * null — the deload path is owned by Gate B / suggestions.ts).
  */
 import { NextResponse } from 'next/server';
 import { startOfWeek, formatISO } from 'date-fns';
@@ -16,25 +24,37 @@ import { startOfWeek, formatISO } from 'date-fns';
 import { db } from '@/lib/supabase';
 import { sendPushToCoach, sendPushToClient } from '@/lib/push';
 import { verifyCronSecret } from '@/lib/cron-auth';
-import { REMINDER_DEDUP_HOURS } from '@/lib/config';
+import {
+  REMINDER_DEDUP_HOURS,
+  ADHERENCE_LOOKBACK_WEEKS,
+  ANOMALY_DEDUP_DAYS,
+} from '@/lib/config';
 import { log } from '@/lib/log';
 import {
-  buildExposureHistory,
-  countConsecutiveStalled,
-  isEscalation,
-  stageFor,
-  type ExerciseLogRow,
-  type Stage,
-} from '@/lib/plateau';
+  buildStalledHistoryRow,
+  decideStalledAlert,
+  type PlateauStage,
+  type StalledAlertDecision,
+  type StalledHistoryRow,
+} from '@/lib/signals/plateau';
+import {
+  buildProgressionSeries,
+  type SessionInput,
+  type Unit,
+} from '@/lib/signals/progression';
+import {
+  evaluateAnomalies,
+  type DetectedAnomaly,
+} from '@/lib/signals/anomaly';
+import { computeAdherence } from '@/lib/signals/adherence';
+import {
+  getActiveClientContext,
+  getContextDirective,
+  type AnomalyType,
+} from '@/lib/signals/client-context';
+import { fetchActiveContextRow } from '@/lib/client-context-store';
 
 export const dynamic = 'force-dynamic';
-
-type StalledRow = {
-  client_id: string;
-  exercise_name_key: string;
-  consecutive_stalled: number;
-  stage: Stage;
-};
 
 export async function POST(req: Request) {
   return handle(req);
@@ -52,7 +72,7 @@ async function handle(req: Request): Promise<NextResponse> {
 
   const { data: clients, error: clientsErr } = await supa
     .from('clients')
-    .select('id, name, weekly_day_target, body_weight_freq, photo_check_in_enabled')
+    .select('id, name, weekly_day_target, body_weight_freq, photo_check_in_enabled, created_at')
     .eq('active', true);
   if (clientsErr) {
     return NextResponse.json({ error: clientsErr.message }, { status: 500 });
@@ -66,7 +86,7 @@ async function handle(req: Request): Promise<NextResponse> {
   const summary = await Promise.all(
     (clients ?? []).map(async (client) => {
       try {
-        const [result, reminders] = await Promise.all([
+        const [result, reminders, anomalies] = await Promise.all([
           analyzeClient(client.id),
           runReminders({
             clientId: client.id,
@@ -77,8 +97,21 @@ async function handle(req: Request): Promise<NextResponse> {
               client.body_weight_freq !== 'none' ||
               client.photo_check_in_enabled === true,
           }),
+          analyzeAnomalies({
+            clientId: client.id,
+            name: client.name,
+            weeklyDayTarget: client.weekly_day_target,
+            clientCreatedAt: client.created_at
+              ? new Date(client.created_at)
+              : null,
+          }),
         ]);
-        return { client_id: client.id, ...result, reminders_sent: reminders };
+        return {
+          client_id: client.id,
+          ...result,
+          reminders_sent: reminders,
+          anomalies_fired: anomalies,
+        };
       } catch (err) {
         log.error('cron.daily.client_failed', err, { clientId: client.id });
         return {
@@ -87,6 +120,7 @@ async function handle(req: Request): Promise<NextResponse> {
           escalations: 0,
           swap_proposals_opened: 0,
           reminders_sent: 0,
+          anomalies_fired: 0,
           error: true,
         };
       }
@@ -296,20 +330,32 @@ async function analyzeClient(clientId: string) {
     return { exercises_processed: 0, escalations: 0, swap_proposals_opened: 0 };
   }
 
+  // Stage 4.6: fetch unit + rir so the SessionMetric series carries
+  // them through. unit feeds buildProgressionSeries's kg normalisation
+  // (clients sometimes mix kg/lb on the same lift); rir feeds the
+  // high_rir_stall branch of classifyExercisePlateau, which routes
+  // the new 'effort_gap' alert type added in migration 0025.
   const { data: setsRows } = await supa
     .from('sets')
-    .select('exercise_log_id,weight,reps')
+    .select('exercise_log_id,weight,reps,rir,unit')
     .in('exercise_log_id', logIds);
 
   const setsByLog = new Map<
     string,
-    { weight: number | null; reps: number | null }[]
+    {
+      weight: number | null;
+      reps: number | null;
+      rir: number | null;
+      unit: Unit;
+    }[]
   >();
   for (const s of setsRows ?? []) {
     const arr = setsByLog.get(s.exercise_log_id) ?? [];
     arr.push({
       weight: s.weight === null ? null : Number(s.weight),
       reps: s.reps === null ? null : Number(s.reps),
+      rir: s.rir,
+      unit: s.unit as Unit,
     });
     setsByLog.set(s.exercise_log_id, arr);
   }
@@ -323,28 +369,32 @@ async function analyzeClient(clientId: string) {
     (exercises ?? []).map((e) => [e.id, e.name_key])
   );
 
-  const logsByNameKey = new Map<string, ExerciseLogRow[]>();
+  // Build per-name_key SessionInput[] for the new classifier path.
+  const sessionsByNameKey = new Map<string, SessionInput[]>();
   for (const l of logsList) {
     const key = nameKeyByExId.get(l.exercise_id);
     const w = workoutById.get(l.workout_id);
     if (!key || !w) continue;
     const sets = setsByLog.get(l.id) ?? [];
     if (sets.length === 0) continue;
-    const arr = logsByNameKey.get(key) ?? [];
+    const arr = sessionsByNameKey.get(key) ?? [];
     arr.push({
       workoutId: l.workout_id,
       workoutStartedAt: w.started_at,
       sets,
     });
-    logsByNameKey.set(key, arr);
+    sessionsByNameKey.set(key, arr);
   }
 
   const { data: priorRows } = await supa
     .from('stalled_history')
-    .select('exercise_name_key,stage')
+    .select('exercise_name_key,plateau_stage')
     .eq('client_id', clientId);
-  const priorStage = new Map<string, Stage>(
-    (priorRows ?? []).map((r) => [r.exercise_name_key, r.stage as Stage])
+  const priorStage = new Map<string, PlateauStage>(
+    (priorRows ?? []).map((r) => [
+      r.exercise_name_key,
+      r.plateau_stage as PlateauStage,
+    ])
   );
 
   const { data: activeProgram } = await supa
@@ -374,16 +424,9 @@ async function analyzeClient(clientId: string) {
     }
   }
 
-  const upserts: (StalledRow & {
-    weekly_exposures: unknown;
-    computed_at: string;
-  })[] = [];
-  const alertInserts: {
-    client_id: string;
-    type: 'stalled';
-    message: string;
-    data: unknown;
-  }[] = [];
+  const now = new Date();
+  const upserts: StalledHistoryRow[] = [];
+  const alertInserts: (StalledAlertDecision & { client_id: string })[] = [];
   const swapInserts: {
     client_id: string;
     exercise_id: string;
@@ -393,51 +436,42 @@ async function analyzeClient(clientId: string) {
   let exercisesProcessed = 0;
   let escalations = 0;
 
-  for (const [nameKey, logs] of logsByNameKey.entries()) {
-    const history = buildExposureHistory(logs);
-    if (history.length < 4) continue;
-
-    exercisesProcessed++;
-    const consecutiveStalled = countConsecutiveStalled(history);
-    const stage = stageFor(consecutiveStalled);
-    const prev = priorStage.get(nameKey) ?? 'none';
-
-    upserts.push({
-      client_id: clientId,
-      exercise_name_key: nameKey,
-      consecutive_stalled: consecutiveStalled,
-      stage,
-      weekly_exposures: history.map((h) => ({
-        weight: h.weight,
-        reps: h.reps,
-        workout_id: h.workoutId,
-        started_at: h.workoutStartedAt,
-      })),
-      computed_at: new Date().toISOString(),
+  for (const [nameKey, sessionInputs] of sessionsByNameKey.entries()) {
+    // Build the same SessionMetric series that the live classifier in
+    // suggestions.ts and recommend-for-client.ts consumes. Single source
+    // of truth — Stage 4.6's whole point.
+    const series = buildProgressionSeries({
+      historical: [],
+      logged: sessionInputs,
     });
 
-    if (stage !== 'none' && (prev === 'none' || isEscalation(prev, stage))) {
+    exercisesProcessed++;
+    const row = buildStalledHistoryRow({
+      clientId,
+      exerciseNameKey: nameKey,
+      series,
+      at: now,
+    });
+    upserts.push(row);
+
+    const decision = decideStalledAlert({
+      previousStage: priorStage.get(nameKey) ?? null,
+      currentStage: row.plateau_stage,
+      exerciseNameKey: nameKey,
+      weeksStalled: row.weeks_stalled,
+    });
+    if (decision) {
       escalations++;
-      alertInserts.push({
-        client_id: clientId,
-        type: 'stalled',
-        message: `${nameKey} entered ${stage} (${consecutiveStalled} stalled exposures).`,
-        data: {
-          exercise_name_key: nameKey,
-          consecutive_stalled: consecutiveStalled,
-          stage,
-          previous_stage: prev,
-        },
-      });
+      alertInserts.push({ client_id: clientId, ...decision });
     }
 
-    if (stage === 'swap_candidate') {
+    if (row.plateau_stage === 'swap_candidate') {
       for (const ex of activeExercises) {
         if (ex.name_key !== nameKey) continue;
         swapInserts.push({
           client_id: clientId,
           exercise_id: ex.id,
-          reason: `Stalled ${consecutiveStalled} consecutive exposures.`,
+          reason: `Plateau-stage swap_candidate (${row.weeks_stalled} wk stalled).`,
         });
       }
     }
@@ -481,4 +515,252 @@ async function analyzeClient(clientId: string) {
     escalations,
     swap_proposals_opened: proposalsOpened,
   };
+}
+
+/**
+ * Stage 6 Piece 3 Surface 1 — anomaly evaluation for one client.
+ *
+ * Fetches the inputs evaluateAnomalies needs (recent workouts, per-
+ * exercise series, prior + current adherence, active context, recently-
+ * alerted types) and writes one alerts row + one coach push per fired
+ * anomaly. Detector + suppression + dedup logic all live in
+ * signals/anomaly — this function is wiring only.
+ *
+ * Window strategy: 90d back covers ANOMALY_QUIET_DAYS (10) + ANOMALY_
+ * RETURN_GAP_DAYS (7) + 2-week adherence lookback with substantial pre-
+ * gap headroom for the performance_cliff e1RM comparison.
+ */
+async function analyzeAnomalies(args: {
+  clientId: string;
+  name: string;
+  weeklyDayTarget: number;
+  clientCreatedAt: Date | null;
+}): Promise<number> {
+  if (!args.clientCreatedAt) return 0;
+  const supa = db();
+  const now = new Date();
+  const ninetyDaysAgoIso = new Date(
+    now.getTime() - 90 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const dedupSinceIso = new Date(
+    now.getTime() - ANOMALY_DEDUP_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const [
+    { data: recentWorkouts },
+    { data: programRow },
+    persistedContext,
+    { data: recentAlertRows },
+  ] = await Promise.all([
+    supa
+      .from('workouts')
+      .select('id, day_id, started_at')
+      .eq('client_id', args.clientId)
+      .not('completed_at', 'is', null)
+      .gte('started_at', ninetyDaysAgoIso)
+      .order('started_at', { ascending: true }),
+    supa
+      .from('programs')
+      .select('id, days(id, day_index, label)')
+      .eq('client_id', args.clientId)
+      .eq('active', true)
+      .maybeSingle(),
+    fetchActiveContextRow(args.clientId),
+    supa
+      .from('alerts')
+      .select('type')
+      .eq('client_id', args.clientId)
+      .gte('created_at', dedupSinceIso)
+      .in('type', [
+        'adherence_drop',
+        'returned_after_gap',
+        'performance_cliff',
+        'went_quiet',
+      ]),
+  ]);
+
+  const completedWorkouts = (recentWorkouts ?? []).map((w) => ({
+    started_at: w.started_at as string,
+  }));
+
+  // hasNoLogs is an ALL-TIME signal. We restricted the recentWorkouts
+  // query to 90d for performance; for the synthesized-onboarding
+  // decision we want "did this client ever log anything." When the 90d
+  // window is empty, we still need to check older history.
+  let hasNoLogs = completedWorkouts.length === 0;
+  if (hasNoLogs) {
+    const { data: anyOlder } = await supa
+      .from('workouts')
+      .select('id')
+      .eq('client_id', args.clientId)
+      .not('completed_at', 'is', null)
+      .limit(1);
+    hasNoLogs = !anyOlder || anyOlder.length === 0;
+  }
+
+  const activeContext = getActiveClientContext({
+    at: now,
+    persistedRow: persistedContext,
+    clientCreatedAt: args.clientCreatedAt,
+    hasNoLogs,
+  });
+  const contextDirective = activeContext
+    ? getContextDirective(activeContext.reasonCode)
+    : null;
+
+  const scheduledDays = (programRow?.days ?? []).map((d) => ({
+    id: d.id as string,
+    day_index: d.day_index as number,
+    label: d.label as string,
+  }));
+
+  const currentAdherence = computeAdherence({
+    completedWorkouts: completedWorkouts.map((w) => ({
+      day_id: '', // day_id not needed for ratio math; computeAdherence
+      // only uses it for missingDayLabels. The cron's anomaly path only
+      // reads .ratio, so leaving empty is correct.
+      started_at: w.started_at,
+    })),
+    scheduledDays,
+    weeklyDayTarget: args.weeklyDayTarget,
+    at: now,
+  });
+  const priorAt = new Date(
+    startOfWeek(now, { weekStartsOn: 1 }).getTime() -
+      ADHERENCE_LOOKBACK_WEEKS * 7 * 24 * 60 * 60 * 1000,
+  );
+  const priorAdherence = computeAdherence({
+    completedWorkouts: completedWorkouts.map((w) => ({
+      day_id: '',
+      started_at: w.started_at,
+    })),
+    scheduledDays,
+    weeklyDayTarget: args.weeklyDayTarget,
+    at: priorAt,
+  });
+
+  // Build perExerciseSeries within the 90d window.
+  const workoutIds = (recentWorkouts ?? []).map((w) => w.id as string);
+  const perExerciseSeries = new Map<string, ReturnType<typeof buildProgressionSeries>>();
+  if (workoutIds.length > 0) {
+    const { data: logsRecent } = await supa
+      .from('exercise_logs')
+      .select('id, workout_id, exercise_id')
+      .in('workout_id', workoutIds);
+    const logRows = logsRecent ?? [];
+    const logIds = logRows.map((l) => l.id as string);
+    if (logIds.length > 0) {
+      const { data: setsRecent } = await supa
+        .from('sets')
+        .select('exercise_log_id, weight, reps, rir, unit')
+        .in('exercise_log_id', logIds);
+      const setsByLog = new Map<
+        string,
+        { weight: number | null; reps: number | null; rir: number | null; unit: Unit }[]
+      >();
+      for (const s of setsRecent ?? []) {
+        const arr = setsByLog.get(s.exercise_log_id as string) ?? [];
+        arr.push({
+          weight: s.weight === null ? null : Number(s.weight),
+          reps: s.reps === null ? null : Number(s.reps),
+          rir: s.rir,
+          unit: s.unit as Unit,
+        });
+        setsByLog.set(s.exercise_log_id as string, arr);
+      }
+      const workoutStartedAt = new Map<string, string>(
+        (recentWorkouts ?? []).map((w) => [w.id as string, w.started_at as string]),
+      );
+      const sessionsByExercise = new Map<string, SessionInput[]>();
+      for (const l of logRows) {
+        const startedAt = workoutStartedAt.get(l.workout_id as string);
+        if (!startedAt) continue;
+        const sets = setsByLog.get(l.id as string) ?? [];
+        if (sets.length === 0) continue;
+        const arr = sessionsByExercise.get(l.exercise_id as string) ?? [];
+        arr.push({
+          workoutId: l.workout_id as string,
+          workoutStartedAt: startedAt,
+          sets,
+        });
+        sessionsByExercise.set(l.exercise_id as string, arr);
+      }
+      for (const [exId, inputs] of sessionsByExercise) {
+        perExerciseSeries.set(
+          exId,
+          buildProgressionSeries({ historical: [], logged: inputs }),
+        );
+      }
+    }
+  }
+
+  const recentlyAlertedTypes = new Set<AnomalyType>(
+    (recentAlertRows ?? [])
+      .map((r) => r.type as AnomalyType)
+      .filter((t): t is AnomalyType =>
+        t === 'adherence_drop' ||
+        t === 'returned_after_gap' ||
+        t === 'performance_cliff' ||
+        t === 'went_quiet',
+      ),
+  );
+
+  const detected = evaluateAnomalies({
+    at: now,
+    clientId: args.clientId,
+    completedWorkouts,
+    perExerciseSeries,
+    priorAdherence,
+    currentAdherence,
+    activeContext,
+    contextDirective,
+    recentlyAlertedTypes,
+  });
+
+  if (detected.length === 0) return 0;
+
+  const inserts = detected.map((d) => ({
+    client_id: args.clientId,
+    type: d.type,
+    message: formatAnomalyMessage(args.name, d),
+    data: d.detail as unknown as Record<string, unknown>,
+  }));
+  await supa.from('alerts').insert(inserts);
+  for (const d of detected) {
+    void sendPushToCoach({
+      title: formatAnomalyTitle(d.type),
+      body: formatAnomalyMessage(args.name, d),
+      url: '/coach',
+    }).catch(() => {});
+  }
+  return detected.length;
+}
+
+function formatAnomalyTitle(type: AnomalyType): string {
+  switch (type) {
+    case 'adherence_drop':
+      return 'Adherence dropped';
+    case 'returned_after_gap':
+      return 'Returned after gap';
+    case 'performance_cliff':
+      return 'Performance cliff';
+    case 'went_quiet':
+      return 'Went quiet';
+  }
+}
+
+function formatAnomalyMessage(name: string, anomaly: DetectedAnomaly): string {
+  switch (anomaly.detail.type) {
+    case 'adherence_drop': {
+      const prior = Math.round(anomaly.detail.priorRatio * 100);
+      const current = Math.round(anomaly.detail.currentRatio * 100);
+      return `${name}: adherence dropped from ${prior}% → ${current}%.`;
+    }
+    case 'returned_after_gap':
+      return `${name} returned after ${anomaly.detail.gapDays}d off.`;
+    case 'performance_cliff':
+      return `${name}: ${anomaly.detail.regressingExerciseCount} lifts regressed beyond MDC after a ${anomaly.detail.gapDays}d gap.`;
+    case 'went_quiet':
+      return `${name} hasn't trained in ${anomaly.detail.quietDays} days.`;
+  }
 }

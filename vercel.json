@@ -15,6 +15,14 @@
     {
       "path": "/api/cron/stale-workouts",
       "schedule": "0,30 * * * *"
+    },
+    {
+      "path": "/api/cron/weekly-note-prepare",
+      "schedule": "0 6 * * 0"
+    },
+    {
+      "path": "/api/cron/weekly-note-send",
+      "schedule": "0 6 * * 1"
     }
   ]
 }

@@ -4,6 +4,16 @@ import { startOfWeek, formatISO } from 'date-fns';
 
 import { db } from './supabase';
 import { buildSuggestionsByClient, type Suggestion } from './suggestions';
+import {
+  buildWeeklyCoachingNote,
+  type PRObservation,
+  type AccessoryTweakObservation,
+} from './signals/weekly-note';
+import {
+  getActiveClientContext,
+  getContextDirective,
+} from './signals/client-context';
+import { fetchActiveContextsForClients } from './client-context-store';
 
 export type ClientWeekRow = {
   clientId: string;
@@ -47,7 +57,7 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
 
   const { data: clients } = await supa
     .from('clients')
-    .select('id, name, weekly_day_target')
+    .select('id, name, weekly_day_target, created_at')
     .eq('active', true)
     .order('name');
 
@@ -74,6 +84,8 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
     { data: stalledRows },
     { data: thisWeekCheckIns },
     { data: priorCheckIns },
+    { data: allTimeCompletedRows },
+    persistedContextByClient,
     suggestionsByClient,
   ] = await Promise.all([
     supa
@@ -83,7 +95,7 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
       .eq('week_start', weekStartIso),
     supa
       .from('best_efforts')
-      .select('client_id')
+      .select('client_id, exercise_name_key, best_weight, best_unit, best_reps')
       .in('client_id', ids)
       .gte('updated_at', weekStartTs)
       .not('source_set_id', 'is', null),
@@ -106,12 +118,26 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
       .lt('date', weekStartIso)
       .not('body_weight', 'is', null)
       .order('date', { ascending: false }),
+    // Stage 6 Piece 3 — all-time completed-workout flag per client.
+    // Powers the hasNoLogs input for the synthesized onboarding check
+    // in the catch-all branch below. limit(1) per-client is the cheapest
+    // shape; we just need "did this client EVER log a workout."
+    supa
+      .from('workouts')
+      .select('client_id')
+      .in('client_id', ids)
+      .not('completed_at', 'is', null),
+    fetchActiveContextsForClients(ids),
     buildSuggestionsByClient(ids, at),
   ]);
 
   const completedWorkoutIds = (weekWorkouts ?? [])
     .filter((w) => w.completed_at)
     .map((w) => w.id);
+
+  const clientsWithAnyLog = new Set<string>(
+    (allTimeCompletedRows ?? []).map((r) => r.client_id as string),
+  );
 
   // exercise_logs + sets in parallel — sets needs log ids, so it's serial,
   // but a single batched query each.
@@ -161,7 +187,31 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
   }
 
   const prsByClient = new Map<string, number>();
-  for (const r of prRows ?? []) prsByClient.set(r.client_id, (prsByClient.get(r.client_id) ?? 0) + 1);
+  // Also pick the top PR per client by e1RM (Epley) for the Stage-5
+  // weekly-note tier-1 celebration. Falls back to null if the row has
+  // missing weight/reps.
+  const topPRByClient = new Map<string, PRObservation>();
+  for (const r of prRows ?? []) {
+    prsByClient.set(r.client_id, (prsByClient.get(r.client_id) ?? 0) + 1);
+    if (r.best_weight == null || r.best_reps == null) continue;
+    const weight = Number(r.best_weight);
+    const reps = r.best_reps;
+    const e1RM = weight * (1 + reps / 30);
+    const prior = topPRByClient.get(r.client_id);
+    const priorE1RM = prior ? prior.weight * (1 + prior.reps / 30) : -Infinity;
+    if (e1RM <= priorE1RM) continue;
+    // exercise_name_key is "dN::display name" — strip the day prefix for
+    // display in the weekly note. Capitalise the first letter so the
+    // body text reads like a coach wrote it.
+    const display = (r.exercise_name_key as string).replace(/^d\d+::/, '');
+    const displayCased = display.charAt(0).toUpperCase() + display.slice(1);
+    topPRByClient.set(r.client_id, {
+      exerciseName: displayCased,
+      weight,
+      unit: (r.best_unit as 'kg' | 'lb' | null) ?? 'kg',
+      reps,
+    });
+  }
 
   const stalledByClient = new Map<string, number>();
   for (const r of stalledRows ?? [])
@@ -192,6 +242,29 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
       body_weight: Number(r.body_weight),
       body_weight_unit: r.body_weight_unit,
     });
+  }
+
+  // Stage 5 wiring: gather untagged active exercises per client so the
+  // weekly note's tier-4 (accessory tweak) can surface one. One batched
+  // query — joins exercises → days → active programs and filters
+  // muscle_group IS NULL.
+  const untaggedByClient = new Map<string, AccessoryTweakObservation>();
+  {
+    const { data: untagged } = await supa
+      .from('exercises')
+      .select('name, days!inner(programs!inner(client_id, active))')
+      .is('archived_at', null)
+      .is('muscle_group', null);
+    for (const row of untagged ?? []) {
+      const dRaw = row.days as unknown;
+      const d = (Array.isArray(dRaw) ? dRaw[0] : dRaw) as {
+        programs?: { client_id?: string; active?: boolean } | null;
+      } | null;
+      const cid = d?.programs?.active === true ? d?.programs?.client_id : null;
+      if (!cid || !ids.includes(cid)) continue;
+      if (untaggedByClient.has(cid)) continue; // one per client is enough
+      untaggedByClient.set(cid, { exerciseName: row.name });
+    }
   }
 
   let totalSets = 0;
@@ -230,6 +303,47 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
     totalDaysDone += daysDone;
     totalTarget += c.weekly_day_target;
 
+    // Stage 5 v2: weekly notes are now emitted inside buildSuggestionsByClient
+    // (where the per-exercise meanTopSetRir + program context for the
+    // tier-2 effort-gap computation already live). This block runs as a
+    // safety catch-all for the rare edge case where suggestions.ts
+    // can't emit (e.g. client with no active program → if-block skipped
+    // → empty suggestion list). Always-non-null property is preserved.
+    const perClientSuggestions = suggestionsByClient.get(c.id) ?? [];
+    if (perClientSuggestions.length === 0) {
+      const adherenceRatio = c.weekly_day_target > 0
+        ? Math.min(1, daysDone / c.weekly_day_target)
+        : 0;
+      // Stage 6 Piece 3 — context template flows into the catch-all so
+      // a context-active client (ClientC onboarding, persisted health,
+      // at_risk re-engagement, etc.) gets the tier-0 framing even when
+      // suggestions.ts's structural block was suppressed by the
+      // directive (which is the normal path for these clients).
+      const createdAt = c.created_at ? new Date(c.created_at as string) : null;
+      const activeContext = createdAt
+        ? getActiveClientContext({
+            at,
+            persistedRow: persistedContextByClient.get(c.id) ?? null,
+            clientCreatedAt: createdAt,
+            hasNoLogs: !clientsWithAnyLog.has(c.id),
+          })
+        : null;
+      const directive = activeContext
+        ? getContextDirective(activeContext.reasonCode)
+        : null;
+      const note = buildWeeklyCoachingNote({
+        clientId: c.id,
+        clientName: c.name,
+        contextTemplate: directive?.weeklyNoteTemplate ?? null,
+        topPR: topPRByClient.get(c.id) ?? null,
+        effortGap: null,
+        primaryRirTarget: null,
+        untaggedExercise: untaggedByClient.get(c.id) ?? null,
+        adherenceRatio,
+      });
+      perClientSuggestions.push(note);
+    }
+
     return {
       clientId: c.id,
       name: c.name,
@@ -242,7 +356,7 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
       prs,
       bodyWeight,
       checkedIn: thisCi != null,
-      suggestions: suggestionsByClient.get(c.id) ?? [],
+      suggestions: perClientSuggestions,
     };
   });
 

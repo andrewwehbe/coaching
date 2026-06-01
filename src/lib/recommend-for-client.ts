@@ -9,17 +9,36 @@ import {
 
 import { db } from './supabase';
 import {
-  ADHERENCE_WINDOW_WEEKS,
+  ADHERENCE_LOOKBACK_WEEKS,
+  FATIGUE_E1RM_REGRESSION_LOOKBACK_WEEKS,
+  FATIGUE_PAIN_RECURRING_WEEKS,
   PAIN_INCIDENT_WINDOW_DAYS,
   type TrainingAge,
 } from './config';
 import { computeProgramContext } from './program-week';
-import { buildExposureHistory, countConsecutiveStalled, type ExerciseLogRow } from './plateau';
 import {
   computeClientRirDrift,
   pickTopSetRir,
   type RirExposure,
 } from './rir-drift';
+import {
+  computeAdherence,
+  type ScheduledDay,
+} from './signals/adherence';
+import {
+  evaluateFatigueTriggers,
+  type RecurringPainExercise,
+} from './signals/fatigue';
+import {
+  classifyExercisePlateau,
+  type PlateauStage,
+} from './signals/plateau';
+import {
+  buildProgressionSeries,
+  type SessionInput,
+  type SessionMetric,
+  type Unit,
+} from './signals/progression';
 import {
   decideRecommendation,
   type MuscleGroup,
@@ -148,13 +167,19 @@ export async function loadRecommendation(
     }
   }
 
-  // Adherence window vs block window — fetch the wider so RIR drift sees
-  // the full block while adherence still only counts the 3-week sub-window.
-  const adherenceSince = subDays(at, ADHERENCE_WINDOW_WEEKS * 7).toISOString();
+  // Workout-fetch window: take the WIDEST of {adherence lookback,
+  // fatigue T2 regression lookback, block-since}. Adherence still
+  // counts only the inner ADHERENCE_LOOKBACK_WEEKS window;
+  // signals/fatigue T2 needs the FATIGUE_E1RM_REGRESSION_LOOKBACK_WEEKS
+  // window; RIR drift needs the full block.
+  const adherenceSince = subDays(at, ADHERENCE_LOOKBACK_WEEKS * 7).toISOString();
+  const regressionSince = subDays(
+    at,
+    (FATIGUE_E1RM_REGRESSION_LOOKBACK_WEEKS + 1) * 7,
+  ).toISOString();
   const painSince = subDays(at, PAIN_INCIDENT_WINDOW_DAYS).toISOString();
   const bwSince = subDays(at, 28).toISOString().slice(0, 10);
-  const workoutsSince =
-    adherenceSince < blockSince ? adherenceSince : blockSince;
+  const workoutsSince = [adherenceSince, regressionSince, blockSince].sort()[0];
 
   const [{ data: workouts }, { data: checkins }] = await Promise.all([
     supa
@@ -173,10 +198,20 @@ export async function loadRecommendation(
       .order('date', { ascending: true }),
   ]);
 
-  const sessionsCompleted = (workouts ?? []).filter(
-    (w) => w.started_at >= adherenceSince,
-  ).length;
-  const sessionsPlanned = (client.weekly_day_target ?? 4) * ADHERENCE_WINDOW_WEEKS;
+  // Adherence signal — sole computation site, shared with suggestions.ts.
+  const scheduledDays: ScheduledDay[] = (dayRows ?? []).map((d) => ({
+    id: d.id,
+    day_index: d.day_index,
+    label: d.label,
+  }));
+  const adherenceSignal = computeAdherence({
+    completedWorkouts: (workouts ?? [])
+      .filter((w) => w.started_at >= adherenceSince)
+      .map((w) => ({ day_id: w.day_id, started_at: w.started_at })),
+    scheduledDays,
+    weeklyDayTarget: client.weekly_day_target ?? 4,
+    at,
+  });
 
   // ---- Pain events (last 14 days) ----
   const { data: painLogs } = await supa
@@ -223,7 +258,6 @@ export async function loadRecommendation(
       worstPainType: worstType,
     });
   }
-  const newPainExerciseCount = painEvents.filter((p) => p.incidentCountInWindow > 0).length;
 
   // ---- Bodyweight slope (%/week, simple endpoint approximation) ----
   let bodyWeightSlopePctPerWeek: number | null = null;
@@ -258,7 +292,7 @@ export async function loadRecommendation(
     .gte('updated_at', prSince);
   const prCount = prs?.length ?? 0;
   let strengthTrend: StrengthTrend;
-  if (sessionsCompleted === 0) {
+  if (adherenceSignal.daysCompletedInWindow === 0) {
     strengthTrend = 'insufficient';
   } else if (prCount >= 2) {
     strengthTrend = 'up';
@@ -268,14 +302,13 @@ export async function loadRecommendation(
     strengthTrend = 'down';
   }
 
-  // ---- Stall analysis + RIR drift ----
-  // Per-exercise log history → exposures → stalled count, using the same
-  // pure helpers as suggestions.ts so behavior matches the legacy gate.
-  // We ALSO build per-exercise RIR exposures (top-set RIR per workout)
-  // restricted to the current block (blockAnchorIso) for the drift gate.
+  // ---- Per-exercise session series + RIR drift ----
+  // Builds SessionInput[] per exercise (carries unit + rir) for the
+  // signals/plateau + signals/fatigue computations below. Also builds
+  // per-exercise RIR exposures restricted to the current block
+  // (blockAnchorIso) for the drift gate.
   const workoutIds = (workouts ?? []).map((w) => w.id);
-  const logsAndSets: ExerciseLogRow[] = [];
-  const logsByExercise = new Map<string, ExerciseLogRow[]>();
+  const sessionInputsByExercise = new Map<string, SessionInput[]>();
   const rirExposuresByExercise = new Map<string, RirExposure[]>();
   if (workoutIds.length > 0) {
     const { data: logs } = await supa
@@ -287,7 +320,7 @@ export async function loadRecommendation(
     const { data: sets } = logIds.length
       ? await supa
           .from('sets')
-          .select('exercise_log_id, weight, reps, rir')
+          .select('exercise_log_id, weight, reps, rir, unit')
           .in('exercise_log_id', logIds)
       : {
           data: [] as Array<{
@@ -295,11 +328,17 @@ export async function loadRecommendation(
             weight: number | string | null;
             reps: number | null;
             rir: number | null;
+            unit: 'kg' | 'lb' | null;
           }>,
         };
     const setsByLog = new Map<
       string,
-      { weight: number | null; reps: number | null; rir: number | null }[]
+      {
+        weight: number | null;
+        reps: number | null;
+        rir: number | null;
+        unit: Unit;
+      }[]
     >();
     for (const s of sets ?? []) {
       const arr = setsByLog.get(s.exercise_log_id) ?? [];
@@ -307,6 +346,7 @@ export async function loadRecommendation(
         weight: s.weight === null ? null : Number(s.weight),
         reps: s.reps === null ? null : s.reps,
         rir: s.rir,
+        unit: s.unit,
       });
       setsByLog.set(s.exercise_log_id, arr);
     }
@@ -315,15 +355,16 @@ export async function loadRecommendation(
       const w = workoutById.get(l.workout_id);
       if (!w) continue;
       const setsForLog = setsByLog.get(l.id) ?? [];
-      const row: ExerciseLogRow = {
+
+      // Per-exercise SessionInput (unit + rir preserved) — feeds both
+      // signals/plateau and signals/fatigue via buildProgressionSeries.
+      const sessionInputs = sessionInputsByExercise.get(l.exercise_id) ?? [];
+      sessionInputs.push({
         workoutId: l.workout_id,
         workoutStartedAt: w.started_at,
-        sets: setsForLog.map((s) => ({ weight: s.weight, reps: s.reps })),
-      };
-      logsAndSets.push(row);
-      const byEx = logsByExercise.get(l.exercise_id) ?? [];
-      byEx.push(row);
-      logsByExercise.set(l.exercise_id, byEx);
+        sets: setsForLog,
+      });
+      sessionInputsByExercise.set(l.exercise_id, sessionInputs);
 
       // RIR exposure for the drift gate. Only count exposures within the
       // current block (since last deload, else since training_start_at).
@@ -343,31 +384,78 @@ export async function loadRecommendation(
     }
   }
 
-  // Compute per-exercise stall counts.
-  const stallByExercise = new Map<string, number>();
-  for (const [exerciseId, rows] of logsByExercise) {
-    const history = buildExposureHistory(rows);
-    if (history.length < 2) continue;
-    const stalled = countConsecutiveStalled(history);
-    stallByExercise.set(exerciseId, stalled);
+  // ---- Per-exercise progression + signals — order matters ----
+  // Stage 4.5: Gate 5 stall classification now goes through
+  // signals/plateau.classifyExercisePlateau, the same helper that
+  // suggestions.ts uses. The cross-surface agreement test in
+  // tests/lib.test.ts locks the invariant: same (exercise × week)
+  // input → same PlateauStage on both surfaces. The retired wrapper in
+  // plateau.ts is no longer called from this file; daily-analysis is
+  // its only remaining caller and tracks as a separate follow-up
+  // ticket (see plateau.ts deprecation comment).
+  //
+  // Build the per-exercise SessionMetric series FIRST, then the RIR
+  // drift signal, because classifyExercisePlateau needs both
+  // (rirDriftAcrossBlock feeds the fatigue_stall branch).
+
+  const perExerciseSeries = new Map<string, SessionMetric[]>();
+  for (const [exerciseId, sessionInputs] of sessionInputsByExercise) {
+    perExerciseSeries.set(
+      exerciseId,
+      buildProgressionSeries({ historical: [], logged: sessionInputs }),
+    );
   }
 
-  // Build StallSignals — only for exercises currently in the active program
-  // (so stalls on archived/swapped-out exercises don't leak through).
+  const rirDriftResult = computeClientRirDrift(
+    [...rirExposuresByExercise.entries()].map(([exerciseId, exposures]) => ({
+      exerciseId,
+      exposures,
+    })),
+  );
+
+  // Per-exercise plateau classification — sole computation site shared
+  // with suggestions.ts (same helper, same inputs, same output).
+  const plateauByExercise = new Map<string, PlateauStage>();
+  for (const [exerciseId, series] of perExerciseSeries) {
+    const result = classifyExercisePlateau({
+      series,
+      rirDriftAcrossBlock: rirDriftResult.drift,
+      at,
+    });
+    plateauByExercise.set(exerciseId, result.stage);
+  }
+
+  // Build StallSignals — only for exercises currently in the active
+  // program (so stalls on archived/swapped-out exercises don't leak
+  // through). A "stall signal" for Gate 5 is any structural-action
+  // stage: watch / progress / swap_candidate. high_rir_stall is an
+  // EFFORT issue (suggestions.ts surfaces it as a coaching cue, not a
+  // structural change). fatigue_stall defers entirely to Gate B.
+  // load_progression is positive/hold, NOT a stall.
+  const STRUCTURAL_STALL_STAGES: ReadonlySet<PlateauStage> = new Set([
+    'watch',
+    'progress',
+    'swap_candidate',
+  ]);
   const stallSignals: StallSignal[] = [];
   const stalledExerciseIds = new Set<string>();
-  // First pass: find stalled exercise ids so we can compute
-  // "othersOnDayProgressing" per signal.
-  for (const [exerciseId, stalled] of stallByExercise) {
-    if (stalled < 2) continue;
+  for (const [exerciseId, stage] of plateauByExercise) {
+    if (!STRUCTURAL_STALL_STAGES.has(stage)) continue;
     if (!exerciseToDay.has(exerciseId)) continue;
     stalledExerciseIds.add(exerciseId);
   }
-  // Index: dayId → set of exercise ids whose history shows progression
-  // (i.e. they have history but are not stalled).
+  // Index: dayId → set of progressing exercise ids on that day.
+  // "Progressing" for Gate 5 means actively progressing OR holding via
+  // load_progression — both signal the day overall is not in a
+  // recovery hole, which is what othersOnDayProgressing was always
+  // meant to indicate.
+  const PROGRESSING_STAGES: ReadonlySet<PlateauStage> = new Set([
+    'progressing',
+    'load_progression',
+  ]);
   const progressingByDay = new Map<string, Set<string>>();
-  for (const [exerciseId, stalled] of stallByExercise) {
-    if (stalled >= 2) continue;
+  for (const [exerciseId, stage] of plateauByExercise) {
+    if (!PROGRESSING_STAGES.has(stage)) continue;
     const meta = exerciseToDay.get(exerciseId);
     if (!meta) continue;
     const s = progressingByDay.get(meta.dayId) ?? new Set();
@@ -376,6 +464,13 @@ export async function loadRecommendation(
   }
   for (const exerciseId of stalledExerciseIds) {
     const meta = exerciseToDay.get(exerciseId)!;
+    // Re-narrow stage in the loop body so TS can prove it's one of
+    // the StallSignal['stage'] values. STRUCTURAL_STALL_STAGES above
+    // is the runtime guard; this is its compile-time mirror. If the
+    // membership check upstream ever drifts, this `continue` is the
+    // safety net.
+    const stage = plateauByExercise.get(exerciseId);
+    if (stage !== 'watch' && stage !== 'progress' && stage !== 'swap_candidate') continue;
     const othersOnDayProgressing = (progressingByDay.get(meta.dayId)?.size ?? 0) > 0;
     stallSignals.push({
       exerciseId,
@@ -385,53 +480,59 @@ export async function loadRecommendation(
       programWeek: programContext.weekInProgram ?? 1,
       othersOnDayProgressing,
       muscleGroup: meta.muscleGroup,
+      stage,
     });
   }
 
-  // Fraction of primary lifts stalled THIS week.
-  const thisWeekStart = startOfWeek(at, { weekStartsOn: 1 });
-  const thisWeekStartIso = formatISO(thisWeekStart, { representation: 'date' });
-  const thisWeekWorkoutIds = new Set(
-    (workouts ?? []).filter((w) => w.week_start >= thisWeekStartIso).map((w) => w.id),
-  );
-  const exercisesLoggedThisWeek = new Set<string>();
-  for (const [exerciseId, rows] of logsByExercise) {
-    for (const r of rows) {
-      if (thisWeekWorkoutIds.has(r.workoutId)) {
-        exercisesLoggedThisWeek.add(exerciseId);
-        break;
-      }
+  // Recurring pain: count distinct weeks per exercise with joint/tendon
+  // pain in the recent window. Fires Trigger 4 when ≥1 exercise hits
+  // FATIGUE_PAIN_RECURRING_WEEKS.
+  const weekKey = (ts: string) => {
+    const monday = startOfWeek(new Date(ts), { weekStartsOn: 1 });
+    return formatISO(monday, { representation: 'date' });
+  };
+  const painWeeksByExercise = new Map<string, Set<string>>();
+  for (const l of painLogs ?? []) {
+    if (l.pain_type !== 'joint' && l.pain_type !== 'tendon') continue;
+    const wRaw = l.workouts as unknown;
+    const w = (Array.isArray(wRaw) ? wRaw[0] : wRaw) as
+      | { started_at?: string }
+      | null;
+    if (!w?.started_at) continue;
+    const wk = weekKey(w.started_at);
+    const set = painWeeksByExercise.get(l.exercise_id) ?? new Set<string>();
+    set.add(wk);
+    painWeeksByExercise.set(l.exercise_id, set);
+  }
+  const recurringPain: RecurringPainExercise[] = [];
+  for (const [exerciseId, weeks] of painWeeksByExercise) {
+    if (weeks.size >= FATIGUE_PAIN_RECURRING_WEEKS) {
+      recurringPain.push({
+        exerciseId,
+        distinctWeeksWithJointOrTendonPain: weeks.size,
+      });
     }
   }
-  const stalledThisWeek = [...exercisesLoggedThisWeek].filter((id) =>
-    stalledExerciseIds.has(id),
-  ).length;
-  const fractionPrimaryLiftsStalled =
-    exercisesLoggedThisWeek.size > 0
-      ? stalledThisWeek / exercisesLoggedThisWeek.size
-      : 0;
 
-  const rirDriftResult = computeClientRirDrift(
-    [...rirExposuresByExercise.entries()].map(([exerciseId, exposures]) => ({
-      exerciseId,
-      exposures,
-    })),
-  );
+  const fatigueSignal = evaluateFatigueTriggers({
+    rirDriftAcrossBlock: rirDriftResult.drift,
+    perExerciseSeries,
+    weeksSinceLastDeload: programContext.weeksSinceLastDeload,
+    recurringPain,
+    at,
+  });
 
   const signals: RecommenderInput = {
     trainingAge: (client.training_age ?? null) as TrainingAge | null,
     primaryGoal: (client.primary_goal ?? null) as PrimaryGoal | null,
-    sessionsCompleted,
-    sessionsPlanned,
+    adherenceSignal,
     weekInProgram: programContext.weekInProgram ?? 1,
     weeksSinceLastDeload: programContext.weeksSinceLastDeload,
     painEvents,
     bodyWeightSlopePctPerWeek,
     strengthTrend,
     stallSignals,
-    fractionPrimaryLiftsStalled,
-    rirDriftAcrossBlock: rirDriftResult.drift,
-    newPainExerciseCount,
+    fatigueSignal,
     weeksOnCurrentSplit: programContext.weeksSinceUpload ?? 0,
   };
 

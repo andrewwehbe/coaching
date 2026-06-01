@@ -21,22 +21,20 @@
  * Server-and-client safe — no node-only imports.
  */
 import {
-  ADHERENCE_FLOOR_LOW,
-  ADHERENCE_FLOOR_OK,
+  ADHERENCE_GATE_RATIO,
   BLOCK_LENGTH_BY_AGE,
   BLOCK_LENGTH_DEFAULT,
   BW_AGGRESSIVE_LOSS_PCT_PER_WEEK,
   BW_DEFICIT_SLOPE_PCT_PER_WEEK,
   DAY_LEVEL_STALL_COUNT,
-  DELOAD_RIR_DRIFT,
-  DELOAD_STALL_FRACTION,
-  DELOAD_TRIGGERS_REQUIRED,
   PAIN_INCIDENT_THRESHOLD,
   SPLIT_ROTATION_CADENCE_WEEKS,
   SYSTEMIC_STALL_DAY_COUNT,
   swapMinProgramWeekFor,
   type TrainingAge,
 } from './config';
+import type { AdherenceSignal } from './signals/adherence';
+import type { FatigueSignal } from './signals/fatigue';
 
 export type PrimaryGoal = 'hypertrophy' | 'strength' | 'fat_loss' | 'general';
 
@@ -91,6 +89,14 @@ export type StallSignal = {
    *  Gate 5b targeting ("drop a set on quads" vs. generic). null when
    *  the program editor hasn't been used to assign a muscle yet. */
   muscleGroup: MuscleGroup | null;
+  /** Stage-4.5: the PlateauStage that the signals/plateau classifier
+   *  emitted for this exercise this week. Always one of
+   *  'watch' | 'progress' | 'swap_candidate' (the structural-action
+   *  stages). Forward-compat info for finer Gate 5 decisions; the
+   *  current recommender still reads only stallSignals.length and
+   *  othersOnDayProgressing. Optional so prior callers/test fixtures
+   *  that omit it still type-check. */
+  stage?: 'watch' | 'progress' | 'swap_candidate';
 };
 
 export type PainEvent = {
@@ -107,9 +113,9 @@ export type RecommenderInput = {
   trainingAge: TrainingAge | null;
   primaryGoal: PrimaryGoal | null;
 
-  /** Sessions completed and planned over ADHERENCE_WINDOW_WEEKS. */
-  sessionsCompleted: number;
-  sessionsPlanned: number;
+  /** Computed by signals/adherence.computeAdherence — single source of
+   *  truth shared with suggestions.ts. */
+  adherenceSignal: AdherenceSignal;
 
   /** Program-week context from lib/program-week. */
   weekInProgram: number;
@@ -125,17 +131,12 @@ export type RecommenderInput = {
 
   /** Aggregated stall analysis from lib/plateau. */
   stallSignals: StallSignal[];
-  /** Fraction of primary lifts that stalled THIS week (0..1). */
-  fractionPrimaryLiftsStalled: number;
 
-  /** Mean rise in estimated RIR at fixed load across the block. null when
-   *  insufficient RIR captures (slice 3 added the column; clients only get
-   *  a meaningful signal once they're actually logging it). */
-  rirDriftAcrossBlock: number | null;
-
-  /** Distinct exercises that flagged NEW pain this block (overlaps with
-   *  painEvents but only the new ones — used by the deload trigger count). */
-  newPainExerciseCount: number;
+  /** Computed by signals/fatigue.evaluateFatigueTriggers — single source
+   *  of truth shared with suggestions.ts. Replaces the per-signal fields
+   *  (rirDriftAcrossBlock, fractionPrimaryLiftsStalled,
+   *  newPainExerciseCount) used by the deleted countDeloadSignals. */
+  fatigueSignal: FatigueSignal;
 
   /** How long the client has been on the current split. Drives Gate 6. */
   weeksOnCurrentSplit: number;
@@ -189,32 +190,9 @@ export function deriveForcedSwaps(painEvents: PainEvent[]): ForcedSwap[] {
   return out;
 }
 
-/** Pure: count how many of the five Gate-2 deload signals fired.
- *  Subjective-fatigue trigger is omitted (no data yet). Exported for tests. */
-export function countDeloadSignals(
-  input: Pick<
-    RecommenderInput,
-    | 'weeksSinceLastDeload'
-    | 'fractionPrimaryLiftsStalled'
-    | 'rirDriftAcrossBlock'
-    | 'newPainExerciseCount'
-    | 'trainingAge'
-  >,
-): number {
-  const blockLen = input.trainingAge
-    ? BLOCK_LENGTH_BY_AGE[input.trainingAge]
-    : BLOCK_LENGTH_DEFAULT;
-  let n = 0;
-  if (input.weeksSinceLastDeload != null && input.weeksSinceLastDeload >= blockLen) n++;
-  if (input.fractionPrimaryLiftsStalled >= DELOAD_STALL_FRACTION) n++;
-  if (input.rirDriftAcrossBlock != null && input.rirDriftAcrossBlock >= DELOAD_RIR_DRIFT) n++;
-  if (input.newPainExerciseCount >= 2) n++;
-  return n;
-}
-
 function defaultDataGaps(input: RecommenderInput): string[] {
   const gaps: string[] = [];
-  if (input.rirDriftAcrossBlock == null) {
+  if (!input.fatigueSignal.rirDrift.available) {
     gaps.push(
       'RIR drift not yet computable — client needs ≥2 weeks of RIR-logged sets at fixed loads.',
     );
@@ -261,51 +239,51 @@ export function decideRecommendation(input: RecommenderInput): Recommendation {
     );
   }
 
-  const adherence =
-    input.sessionsPlanned > 0
-      ? input.sessionsCompleted / input.sessionsPlanned
-      : 0;
+  const adherence = input.adherenceSignal.ratio;
   const adherencePct = Math.round(adherence * 100);
+  const gateRatioPct = Math.round(input.adherenceSignal.gateRatio * 100);
 
-  // ---- Gate 0: adherence (data validity) ----
-  if (input.sessionsPlanned > 0 && adherence < ADHERENCE_FLOOR_LOW) {
-    rationale.push(`Gate 0: adherence ${adherencePct}% < ${Math.round(ADHERENCE_FLOOR_LOW * 100)}%.`);
+  // ---- Gate 0: adherence (single-threshold behavioral gate) ----
+  // The two-band (low / mid) refer-adherence logic and the "consider
+  // reducing the program" body were both removed in the Stage-1 redesign:
+  // missed sessions are an adherence problem, not evidence the program
+  // is too big. The body is now purely behavioral.
+  if (input.adherenceSignal.isLow) {
+    rationale.push(`Gate 0: adherence ${adherencePct}% < ${gateRatioPct}%.`);
+    const missing = input.adherenceSignal.missingDayLabels;
+    const missingClause =
+      missing.length > 0
+        ? ` Days not trained in the last ${input.adherenceSignal.lookbackWeeks} weeks: ${missing.join(', ')}.`
+        : '';
     return {
       type: 'refer_adherence',
-      title: 'Adherence first',
+      title: 'Adherence below threshold',
       body:
-        `Only ${input.sessionsCompleted} of ${input.sessionsPlanned} planned sessions completed. ` +
-        'Program-level changes are noise below this threshold — surface the barrier (schedule, ' +
-        'motivation, session length) and consider reducing the program (fewer days, shorter ' +
-        'sessions) to rebuild the habit. Plateau analysis suppressed.',
+        `Adherence ${adherencePct}% (${input.adherenceSignal.daysCompletedInWindow}/${input.adherenceSignal.daysExpectedInWindow} sessions over the last ${input.adherenceSignal.lookbackWeeks} weeks).` +
+        missingClause +
+        ' Surface the scheduling/motivation barrier with the client — what is blocking the missed sessions, and can they make them up. Plateau-driven recommendations are suppressed until adherence recovers; pain alerts still apply. Do NOT change the program for adherence.',
       forcedSwaps,
       rationale,
       dataGaps: gaps,
     };
   }
-  const plateauLogicEnabled =
-    input.sessionsPlanned === 0 || adherence >= ADHERENCE_FLOOR_OK;
-  if (!plateauLogicEnabled) {
-    rationale.push(
-      `Gate 0: adherence ${adherencePct}% in [${Math.round(ADHERENCE_FLOOR_LOW * 100)}%, ${Math.round(
-        ADHERENCE_FLOOR_OK * 100,
-      )}%) — plateau gates suppressed but pain/deload still run.`,
-    );
-  }
+  const plateauLogicEnabled = true;
 
   // ---- Gate 2: deload (pre-empts plateau interpretation) ----
-  const deloadSignals = countDeloadSignals(input);
-  if (deloadSignals >= DELOAD_TRIGGERS_REQUIRED) {
+  // Reads input.fatigueSignal — computed by signals/fatigue and shared
+  // with suggestions.ts so both surfaces agree on shouldDeload.
+  if (input.fatigueSignal.shouldDeload) {
     rationale.push(
-      `Gate 2: ${deloadSignals} of 4 deload signals fired (need ≥${DELOAD_TRIGGERS_REQUIRED}).`,
+      `Gate 2: fatigue triggers fired (${input.fatigueSignal.firedTriggers.join(', ')}).`,
     );
     return {
       type: 'trigger_deload',
       title: 'Trigger deload',
       body:
-        'Multiple fatigue signals are coinciding. Cut volume by ~40–60% this week while ' +
-        'keeping intensity (load × RIR target) close to normal — fewer sets, not lighter weights. ' +
-        'Hold all other program changes until next block; you cannot diagnose a plateau through ' +
+        'Fatigue signals are coinciding. Cut volume by ~40–60% this week while keeping ' +
+        'intensity (load × RIR target) close to normal — fewer sets, not lighter weights ' +
+        '(Coleman 2024: complete-cessation deloads can slightly hurt strength). Hold all ' +
+        'other program changes until next block; you cannot diagnose a plateau through ' +
         'accumulated fatigue.',
       forcedSwaps,
       rationale,
@@ -376,10 +354,10 @@ export function decideRecommendation(input: RecommenderInput): Recommendation {
   if (
     input.weeksSinceLastDeload != null &&
     input.weeksSinceLastDeload >= blockLen &&
-    deloadSignals < DELOAD_TRIGGERS_REQUIRED
+    !input.fatigueSignal.shouldDeload
   ) {
     rationale.push(
-      `Gate 4: weeks_since_deload ${input.weeksSinceLastDeload} ≥ block length ${blockLen} but deload signals (${deloadSignals}) below threshold.`,
+      `Gate 4: weeks_since_deload ${input.weeksSinceLastDeload} ≥ block length ${blockLen} but no fatigue triggers firing.`,
     );
     return {
       type: 'phase_transition',
@@ -394,21 +372,11 @@ export function decideRecommendation(input: RecommenderInput): Recommendation {
     };
   }
 
-  // ---- Gate 5: plateau interpretation (needs valid data) ----
-  if (!plateauLogicEnabled) {
-    rationale.push('Gate 5 skipped — adherence below OK floor, stalls uninterpretable.');
-    return {
-      type: 'hold',
-      title: 'Hold',
-      body:
-        `Adherence ${adherencePct}% is below the ${Math.round(ADHERENCE_FLOOR_OK * 100)}% threshold ` +
-        'for trusting plateau signals. Pain/deload paths still run; no program change recommended ' +
-        'until adherence recovers.',
-      forcedSwaps,
-      rationale,
-      dataGaps: gaps,
-    };
-  }
+  // ---- Gate 5: plateau interpretation ----
+  // Under Stage 1, low adherence already returned refer_adherence at
+  // Gate 0 — there is no "mid band" suppression here anymore. The
+  // plateauLogicEnabled flag is always true at this point and was
+  // removed.
   // Diverges from the Appendix A pseudocode, which returned HOLD here on
   // an empty stall list. That ordering would mask Gate 6 (split rotation),
   // which is a variety/staleness cue not predicated on stalls — so we

@@ -2,23 +2,22 @@ import 'server-only';
 
 import { db } from './supabase';
 import { sendPushToCoach } from './push';
+import type { AlertType } from './alert-types';
 
-export type AlertType =
-  | 'pain'
-  | 'stalled'
-  | 'missed_workout'
-  | 'workout_started'
-  | 'workout_completed'
-  | 'workout_stale'
-  | 'check_in_due'
-  | 'check_in_submitted'
-  | 'missed_checkin';
+// Re-export so existing callers `import { AlertType } from '@/lib/notify'`
+// keep working. The single source lives in alert-types.ts (pure module
+// importable from client components too).
+export type { AlertType };
 
-// Every coach-facing alert is pushable now — coach asked to be notified
-// in real time on workout start/finish, check-ins, missed days, pain,
-// stalled. The only non-pushable is check_in_due (that one goes to the
-// client themselves via the cron, not the coach).
-const PUSHABLE: ReadonlySet<AlertType> = new Set([
+// Coach-facing alerts that should auto-push the coach when written via
+// insertAlert. Non-pushable: check_in_due (client-bound, sent by cron
+// not coach-facing) and weekly_note_sent (per-client dedup row, no
+// coach action implied). The Stage 6 anomaly types (adherence_drop,
+// returned_after_gap, performance_cliff, went_quiet) ARE in here for
+// defense — the daily-analysis cron currently bypasses insertAlert and
+// sends its own push, but if a future caller routes through here it
+// should push.
+const PUSHABLE: ReadonlySet<AlertType> = new Set<AlertType>([
   'pain',
   'stalled',
   'missed_workout',
@@ -27,7 +26,34 @@ const PUSHABLE: ReadonlySet<AlertType> = new Set([
   'workout_stale',
   'check_in_submitted',
   'missed_checkin',
+  'deload',
+  'effort_gap',
+  'adherence_drop',
+  'returned_after_gap',
+  'performance_cliff',
+  'went_quiet',
 ]);
+
+function titleFor(type: AlertType): string {
+  switch (type) {
+    case 'pain': return '⚠️ Pain reported';
+    case 'workout_started': return '🏋️ Started';
+    case 'workout_completed': return '✅ Finished';
+    case 'workout_stale': return '🕒 Workout still open';
+    case 'missed_workout': return 'Behind on workouts';
+    case 'stalled': return 'Stalled exercise';
+    case 'check_in_submitted': return '📋 Check-in';
+    case 'missed_checkin': return '⏭ Missed check-in';
+    case 'deload': return 'Deload recommended';
+    case 'effort_gap': return 'Effort gap';
+    case 'adherence_drop': return 'Adherence dropped';
+    case 'returned_after_gap': return 'Returned after gap';
+    case 'performance_cliff': return 'Performance cliff';
+    case 'went_quiet': return 'Went quiet';
+    case 'check_in_due': return 'Coaching';
+    case 'weekly_note_sent': return 'Coaching';
+  }
+}
 
 export async function insertAlert(args: {
   clientId: string;
@@ -44,18 +70,8 @@ export async function insertAlert(args: {
   });
 
   if (PUSHABLE.has(args.type)) {
-    const title =
-      args.type === 'pain' ? '⚠️ Pain reported'
-      : args.type === 'workout_started' ? '🏋️ Started'
-      : args.type === 'workout_completed' ? '✅ Finished'
-      : args.type === 'workout_stale' ? '🕒 Workout still open'
-      : args.type === 'missed_workout' ? 'Behind on workouts'
-      : args.type === 'stalled' ? 'Stalled exercise'
-      : args.type === 'check_in_submitted' ? '📋 Check-in'
-      : args.type === 'missed_checkin' ? '⏭ Missed check-in'
-      : 'Coaching';
     void sendPushToCoach({
-      title,
+      title: titleFor(args.type),
       body: args.message,
       url: '/coach',
     }).catch(() => {});

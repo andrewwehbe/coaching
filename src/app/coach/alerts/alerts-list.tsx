@@ -5,26 +5,27 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 
+import type { AlertType } from '@/lib/alert-types';
+
 type Alert = {
   id: string;
   client_id: string;
-  type:
-    | 'pain'
-    | 'stalled'
-    | 'missed_workout'
-    | 'workout_started'
-    | 'workout_completed'
-    | 'workout_stale'
-    | 'check_in_due'
-    | 'check_in_submitted'
-    | 'missed_checkin';
+  type: AlertType;
   message: string;
   created_at: string;
   acknowledged_at: string | null;
   clients: { name: string } | null;
 };
 
-const TYPE_CHIPS: Record<Alert['type'], { label: string; className: string }> = {
+// Per-type chip styling. Source-of-truth for the AlertType union lives
+// in src/lib/alert-types.ts; this Record is its UI shadow. Missing a
+// key here will compile-error at the Record declaration the moment a
+// new type is added to AlertType — so the worst case is a build
+// failure (Vercel catches it), not a runtime crash on /coach/alerts.
+// We also add a runtime FALLBACK at the lookup site below so that even
+// a DB-write of a type not yet known to the bundle (e.g. mid-rollback)
+// renders a generic chip rather than crashing the page.
+const TYPE_CHIPS: Record<AlertType, { label: string; className: string }> = {
   pain: { label: 'Pain', className: 'bg-danger/10 text-danger border-danger/35' },
   stalled: { label: 'Stalled', className: 'bg-warn/10 text-warn border-warn/35' },
   missed_workout: { label: 'Missed', className: 'bg-warn/10 text-warn border-warn/35' },
@@ -40,6 +41,24 @@ const TYPE_CHIPS: Record<Alert['type'], { label: string; className: string }> = 
     className: 'bg-primary/15 text-primary-hi border-primary/30',
   },
   missed_checkin: { label: 'Missed check-in', className: 'bg-warn/10 text-warn border-warn/35' },
+  // Stage 4 — 0025.
+  deload: { label: 'Deload', className: 'bg-warn/10 text-warn border-warn/35' },
+  effort_gap: { label: 'Effort gap', className: 'bg-warn/10 text-warn border-warn/35' },
+  // Stage 6 Piece 2 — 0029 anomaly notifications.
+  adherence_drop: { label: 'Adherence drop', className: 'bg-warn/10 text-warn border-warn/35' },
+  returned_after_gap: {
+    label: 'Returned',
+    className: 'bg-accent/10 text-accent border-accent/30',
+  },
+  performance_cliff: { label: 'Cliff', className: 'bg-danger/10 text-danger border-danger/35' },
+  went_quiet: { label: 'Quiet', className: 'bg-warn/10 text-warn border-warn/35' },
+  // Stage 6 Piece 4 — 0030 per-client per-week dedup row.
+  weekly_note_sent: { label: 'Note sent', className: 'bg-surface-2 text-muted border-border' },
+};
+
+const UNKNOWN_CHIP = {
+  label: 'Alert',
+  className: 'bg-surface-2 text-muted border-border',
 };
 
 export function AlertsList({ alerts }: { alerts: Alert[] }) {
@@ -98,7 +117,13 @@ export function AlertsList({ alerts }: { alerts: Alert[] }) {
       )}
       <ul className="border-t border-border">
         {alerts.map((a) => {
-          const chip = TYPE_CHIPS[a.type];
+          // Runtime fallback: a chip-less type renders the generic
+          // "Alert" chip rather than crashing the page. This catches
+          // the case where a new DB migration adds an alert type that
+          // the deployed bundle doesn't yet know about (e.g. mid-
+          // rollback, or a hand-written alert insert from an admin
+          // script with a forward-looking type).
+          const chip = TYPE_CHIPS[a.type] ?? UNKNOWN_CHIP;
           const acked = !!a.acknowledged_at;
           return (
             <li

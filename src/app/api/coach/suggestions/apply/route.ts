@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { requireCoachApi } from '@/lib/coach-guard';
 import { db } from '@/lib/supabase';
+import { markDeloadWeek } from '@/lib/deload';
 import { sendPushToClient } from '@/lib/push';
 import { log } from '@/lib/log';
 
@@ -10,7 +11,8 @@ export const dynamic = 'force-dynamic';
 type Body =
   | { kind: 'add_set'; clientId: string; exerciseIds: string[] }
   | { kind: 'archive_day'; clientId: string; dayId: string }
-  | { kind: 'swap_exercise'; clientId: string; exerciseIds: string[]; replacementName: string };
+  | { kind: 'swap_exercise'; clientId: string; exerciseIds: string[]; replacementName: string }
+  | { kind: 'deload'; clientId: string; firedTriggers: string[] };
 
 export async function POST(req: Request) {
   const guard = await requireCoachApi();
@@ -187,6 +189,40 @@ export async function POST(req: Request) {
     }).catch(() => {});
 
     return NextResponse.json({ ok: true, replaced: rows.length });
+  }
+
+  if (body.kind === 'deload') {
+    // Marks the current calendar week as a deload for the client. The
+    // applyDeloadOverlay (cue.ts) reduces working-set volume at RENDER
+    // time and buildRirTargetForCue applies the RIR backoff — neither
+    // mutates exercises.prescribed_sets. Load is held; only volume +
+    // effort drop. Coleman 2024 (PeerJ e16777) — complete cessation can
+    // hurt strength, so keep the bar moving.
+    const firedTriggers = Array.isArray(body.firedTriggers)
+      ? body.firedTriggers.filter((s) => typeof s === 'string')
+      : [];
+
+    const result = await markDeloadWeek(body.clientId, guard.user.id);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 500 });
+    }
+
+    await supa.from('audit_log').insert({
+      actor_type: 'coach',
+      actor_id: guard.user.id,
+      action: 'suggestion.deload',
+      target_type: 'client',
+      target_id: body.clientId,
+      details: { week_start: result.weekStart, fired_triggers: firedTriggers },
+    });
+
+    void sendPushToClient(body.clientId, {
+      title: 'Deload week',
+      body: 'Coach set this week as a deload — load is held, sets are reduced.',
+      url: '/today',
+    }).catch(() => {});
+
+    return NextResponse.json({ ok: true, weekStart: result.weekStart });
   }
 
   log.warn('suggestion.unknown_kind', { kind: (body as { kind: string }).kind });
