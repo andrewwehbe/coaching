@@ -44,6 +44,7 @@ import {
   pickTopSetRir,
   type RirExposure,
 } from '../src/lib/rir-drift';
+import { toggleWeightSign } from '../src/lib/weight';
 
 let passed = 0;
 let failed = 0;
@@ -4618,6 +4619,15 @@ check(
     return retryRun.length === 0;
   })(),
 );
+
+// ---------- toggleWeightSign (negative loads for counterweighted machines) ----------
+
+check('toggleWeightSign: positive -> negative', toggleWeightSign('30') === '-30');
+check('toggleWeightSign: negative -> positive', toggleWeightSign('-30') === '30');
+check('toggleWeightSign: empty -> minus', toggleWeightSign('') === '-');
+check('toggleWeightSign: lone minus -> empty', toggleWeightSign('-') === '');
+check('toggleWeightSign: decimal preserved', toggleWeightSign('12.5') === '-12.5');
+check('toggleWeightSign: trims whitespace', toggleWeightSign(' 20 ') === '-20');
 
 // ---------- summary ----------
 

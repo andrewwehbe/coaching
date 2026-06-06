@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { toggleWeightSign } from '@/lib/weight';
+
 type Exercise = {
   id: string;
   name: string;
@@ -243,14 +245,31 @@ export function LogOnBehalfForm({ clientId, days }: { clientId: string; days: Da
                       />
                     ) : (
                       <>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={s.weight}
-                          onChange={(e) => updateSet(ex.id, i, { weight: e.target.value })}
-                          placeholder="weight"
-                          className="col-span-3 h-10 text-sm rounded-lg bg-bg/70 border border-border px-2 focus:outline-none focus:border-border-strong"
-                        />
+                        <div className="col-span-3 flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateSet(ex.id, i, { weight: toggleWeightSign(s.weight) })
+                            }
+                            aria-label="Toggle negative weight"
+                            title="Negative for counterweighted machines (e.g. pendulum)"
+                            className={`shrink-0 w-7 h-10 rounded-lg border text-base leading-none transition-colors ${
+                              s.weight.trim().startsWith('-')
+                                ? 'bg-primary/15 text-primary-hi border-primary/40'
+                                : 'bg-bg/70 text-faint border-border hover:text-muted'
+                            }`}
+                          >
+                            ±
+                          </button>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={s.weight}
+                            onChange={(e) => updateSet(ex.id, i, { weight: e.target.value })}
+                            placeholder="weight"
+                            className="w-full h-10 text-sm rounded-lg bg-bg/70 border border-border px-2 focus:outline-none focus:border-border-strong"
+                          />
+                        </div>
                         <select
                           value={s.unit}
                           onChange={(e) =>

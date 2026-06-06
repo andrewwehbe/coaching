@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 
 import { OfflineBanner } from '@/components/offline-banner';
 import { enqueueAndSend, flushQueue, pendingCount } from '@/lib/offline-queue';
+import { toggleWeightSign } from '@/lib/weight';
 
 export type LoggedSet = {
   setNumber: number;
@@ -702,13 +703,28 @@ function SetRow({
       <div className="grid grid-cols-12 gap-2 items-end">
         <label className="col-span-5">
           <span className="text-[10px] uppercase tracking-wider text-faint">Weight</span>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={row.weight}
-            onChange={(e) => onChange({ weight: e.target.value })}
-            className="mt-1 w-full px-2 py-2 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-base tabular-nums"
-          />
+          <div className="mt-1 flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => onChange({ weight: toggleWeightSign(row.weight) })}
+              aria-label="Toggle negative weight"
+              title="Negative for counterweighted machines (e.g. pendulum)"
+              className={`shrink-0 w-9 rounded-xl border text-lg leading-none transition-colors ${
+                row.weight.trim().startsWith('-')
+                  ? 'bg-primary/15 text-primary-hi border-primary/40'
+                  : 'bg-surface text-muted border-border hover:text-text'
+              }`}
+            >
+              ±
+            </button>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={row.weight}
+              onChange={(e) => onChange({ weight: e.target.value })}
+              className="w-full px-2 py-2 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-base tabular-nums"
+            />
+          </div>
         </label>
         <div className="col-span-2 flex flex-col">
           <span className="text-[10px] uppercase tracking-wider text-faint">Unit</span>
