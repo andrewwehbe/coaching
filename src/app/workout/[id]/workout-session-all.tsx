@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { OfflineBanner } from '@/components/offline-banner';
+import { SelfNoteCard } from './self-note-card';
 import { enqueueAndSend, flushQueue, pendingCount } from '@/lib/offline-queue';
 import { toggleWeightSign } from '@/lib/weight';
 
@@ -28,6 +29,7 @@ export type ExerciseStateAll = {
   repMin: number | null;
   repMax: number | null;
   coachNote: string | null;
+  selfNote: string | null;
   isCardio: boolean;
   cardioType: 'treadmill' | 'elliptical' | 'stairmaster' | null;
   logStatus: 'completed' | 'skipped' | 'pain' | null;
@@ -494,6 +496,17 @@ export function WorkoutSessionAll({
           <p className="text-text">{current.coachNote}</p>
         </div>
       )}
+
+      <SelfNoteCard
+        workoutId={workoutId}
+        exerciseId={current.id}
+        note={current.selfNote}
+        onChange={(note) =>
+          setState((prev) =>
+            prev.map((e) => (e.id === current.id ? { ...e, selfNote: note } : e))
+          )
+        }
+      />
 
       <p className="text-xs uppercase tracking-[0.18em] text-faint mb-1.5">
         Exercise {current.position}

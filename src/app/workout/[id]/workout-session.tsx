@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 
 import type { Cue } from '@/lib/cue';
 import { CueDisplay } from './cue-display';
+import { SelfNoteCard } from './self-note-card';
 import { RestTimer } from '@/components/rest-timer';
 import { OfflineBanner } from '@/components/offline-banner';
 import { enqueueAndSend, flushQueue, pendingCount } from '@/lib/offline-queue';
@@ -33,6 +34,7 @@ export type ExerciseState = {
   repMin: number | null;
   repMax: number | null;
   coachNote: string | null;
+  selfNote: string | null;
   isCardio: boolean;
   cardioType: 'treadmill' | 'elliptical' | 'stairmaster' | null;
   cue: Cue;
@@ -601,6 +603,17 @@ export function WorkoutSession({
           <p className="text-text">{current.coachNote}</p>
         </div>
       )}
+
+      <SelfNoteCard
+        workoutId={workoutId}
+        exerciseId={current.id}
+        note={current.selfNote}
+        onChange={(note) =>
+          setState((prev) =>
+            prev.map((e) => (e.id === current.id ? { ...e, selfNote: note } : e))
+          )
+        }
+      />
 
       <p className="text-xs uppercase tracking-[0.18em] text-faint mb-1.5">
         Exercise {current.position}
