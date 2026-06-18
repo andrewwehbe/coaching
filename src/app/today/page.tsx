@@ -6,6 +6,7 @@ import { linkForClient } from '@/lib/coach-link';
 import { getCheckInStatus } from '@/lib/check-in-status';
 import { db } from '@/lib/supabase';
 import { HeaderMenu } from '@/components/header-menu';
+import { FeatureAnnounce } from '@/components/feature-announce';
 import { LoadInView } from './load-in';
 
 export const dynamic = 'force-dynamic';
@@ -37,6 +38,7 @@ export default async function TodayPage() {
   if (!schedule.programId) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center px-6 text-center space-y-4">
+        <FeatureAnnounce />
         <h1 className="text-xl font-semibold">No program yet</h1>
         <p className="text-muted text-sm max-w-xs">
           Your coach hasn&apos;t set up your program. Check back soon.
@@ -51,7 +53,9 @@ export default async function TodayPage() {
 
   // All clients get the barbell load-in experience now.
   return (
-    <LoadInView
+    <>
+      <FeatureAnnounce />
+      <LoadInView
       greetingName={user.greetingName}
       days={schedule.days.map((d) => ({
         dayId: d.dayId,
@@ -82,6 +86,7 @@ export default async function TodayPage() {
           ]}
         />
       }
-    />
+      />
+    </>
   );
 }
