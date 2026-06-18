@@ -12,7 +12,7 @@
      doesn't see the previous user's cached HTML.
 */
 
-const VERSION = 'v7';
+const VERSION = 'v8';
 const APP_CACHE = `coaching-app-${VERSION}`;
 const STATIC_CACHE = `coaching-static-${VERSION}`;
 const OFFLINE_URL = '/offline';
@@ -119,6 +119,12 @@ self.addEventListener('push', (event) => {
     badge: '/icons/icon-192.png',
     data: { url: data.url ?? '/' },
     vibrate: [120, 60, 120],
+    // Coalesce *identical* notifications (same title+body) so a duplicate
+    // delivery collapses onto the existing one instead of stacking. Distinct
+    // alerts differ in title/body and so keep their own tag. renotify keeps the
+    // alert audible/visible when a genuinely new one replaces an old same-tag.
+    tag: `${title}\n${data.body ?? ''}`,
+    renotify: true,
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });

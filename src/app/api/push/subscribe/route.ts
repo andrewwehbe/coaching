@@ -31,6 +31,19 @@ export async function POST(req: Request) {
 
   const supa = db();
 
+  // A push endpoint identifies one physical browser, and that browser shows
+  // exactly one person's notifications at a time. On a shared device (e.g. a
+  // coach switching between client accounts) the same endpoint would otherwise
+  // stay attached to every account that ever logged in here, so every one of
+  // them fires its own push — the "double notifications" bug. Claim the
+  // endpoint for the current user by evicting any rows other accounts hold for
+  // it before we (re)attach our own.
+  await supa
+    .from('devices')
+    .delete()
+    .filter('push_subscription->>endpoint', 'eq', subscription.endpoint)
+    .or(`user_id.neq.${user.id},user_type.neq.${user.type}`);
+
   // De-dupe by endpoint per user — same browser re-subscribing shouldn't pile up rows.
   const { data: existing } = await supa
     .from('devices')

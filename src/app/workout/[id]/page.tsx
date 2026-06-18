@@ -69,18 +69,30 @@ export default async function WorkoutPage(props: { params: Params }) {
       .eq('workout_id', workout.id),
   ]);
 
-  // Best efforts depend on exercises' name_keys, so this one must follow.
+  // Best efforts and self-notes both depend on exercises' name_keys, so these
+  // must follow. Keying notes by name_key (not exercise id) is what lets a
+  // client's note to self persist across programs and re-appear next time.
   const nameKeys = Array.from(new Set((exercises ?? []).map((e) => e.name_key)));
-  const bests = nameKeys.length
-    ? (
-        await supa
+  const [bests, selfNotes] = nameKeys.length
+    ? await Promise.all([
+        supa
           .from('best_efforts')
           .select('exercise_name_key, best_weight, best_unit, best_reps')
           .eq('client_id', user.id)
           .in('exercise_name_key', nameKeys)
-      ).data ?? []
-    : [];
+          .then((r) => r.data ?? []),
+        supa
+          .from('exercise_self_notes')
+          .select('exercise_name_key, note')
+          .eq('client_id', user.id)
+          .in('exercise_name_key', nameKeys)
+          .then((r) => r.data ?? []),
+      ])
+    : [[], []];
   const bestByKey = new Map(bests.map((b) => [b.exercise_name_key, b]));
+  const selfNoteByKey = new Map(
+    selfNotes.map((n) => [n.exercise_name_key, n.note as string])
+  );
 
   const states: ExerciseState[] = (exercises ?? []).map((ex) => {
     const log = (logs ?? []).find((l) => l.exercise_id === ex.id) ?? null;
@@ -102,6 +114,7 @@ export default async function WorkoutPage(props: { params: Params }) {
       repMin: ex.rep_min,
       repMax: ex.rep_max,
       coachNote: ex.coach_note,
+      selfNote: selfNoteByKey.get(ex.name_key) ?? null,
       isCardio: ex.is_cardio,
       cardioType: ex.cardio_type,
       cue: buildCue(bestEffort, rx),
@@ -183,6 +196,7 @@ export default async function WorkoutPage(props: { params: Params }) {
         repMin: ex.rep_min,
         repMax: ex.rep_max,
         coachNote: ex.coach_note,
+        selfNote: selfNoteByKey.get(ex.name_key) ?? null,
         isCardio: ex.is_cardio,
         cardioType: ex.cardio_type,
         logStatus: log?.status ?? null,

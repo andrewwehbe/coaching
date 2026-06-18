@@ -6,10 +6,12 @@ import { useEffect, useState } from 'react';
 
 import type { Cue } from '@/lib/cue';
 import { CueDisplay } from './cue-display';
+import { SelfNoteCard } from './self-note-card';
 import { RestTimer } from '@/components/rest-timer';
 import { OfflineBanner } from '@/components/offline-banner';
 import { enqueueAndSend, flushQueue, pendingCount } from '@/lib/offline-queue';
 import { MAX_VIDEO_BYTES } from '@/lib/config';
+import { toggleWeightSign } from '@/lib/weight';
 import { PrOverlay } from './pr-overlay';
 
 export type LoggedSet = {
@@ -32,6 +34,7 @@ export type ExerciseState = {
   repMin: number | null;
   repMax: number | null;
   coachNote: string | null;
+  selfNote: string | null;
   isCardio: boolean;
   cardioType: 'treadmill' | 'elliptical' | 'stairmaster' | null;
   cue: Cue;
@@ -601,6 +604,17 @@ export function WorkoutSession({
         </div>
       )}
 
+      <SelfNoteCard
+        workoutId={workoutId}
+        exerciseId={current.id}
+        note={current.selfNote}
+        onChange={(note) =>
+          setState((prev) =>
+            prev.map((e) => (e.id === current.id ? { ...e, selfNote: note } : e))
+          )
+        }
+      />
+
       <p className="text-xs uppercase tracking-[0.18em] text-faint mb-1.5">
         Exercise {current.position}
         {current.logStatus === 'completed' && (
@@ -910,13 +924,28 @@ function StrengthFields({
       <div className="flex gap-2">
         <div className="flex-1">
           <label className="block text-xs text-faint mb-1">Weight</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={weight}
-            onChange={(e) => setWeight(e.target.value)}
-            className="w-full h-12 px-3 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-lg tabular-nums transition-shadow"
-          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setWeight(toggleWeightSign(weight))}
+              aria-label="Toggle negative weight"
+              title="Negative for counterweighted machines (e.g. pendulum)"
+              className={`h-12 w-12 shrink-0 rounded-xl border text-xl leading-none transition-colors ${
+                weight.trim().startsWith('-')
+                  ? 'bg-primary/15 text-primary-hi border-primary/40'
+                  : 'bg-surface text-muted border-border hover:text-text'
+              }`}
+            >
+              ±
+            </button>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+              className="w-full h-12 px-3 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-lg tabular-nums transition-shadow"
+            />
+          </div>
         </div>
         <div className="w-20">
           <label className="block text-xs text-faint mb-1">Unit</label>
