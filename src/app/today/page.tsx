@@ -15,7 +15,7 @@ export const revalidate = 0;
 // Rollout gate for the "Add a note to self" announcement. While this holds
 // client ids, only those clients see the popup. To release to everyone, set
 // ANNOUNCE_TO_EVERYONE = true (the allowlist is then ignored).
-const ANNOUNCE_TO_EVERYONE = false;
+const ANNOUNCE_TO_EVERYONE = true;
 const ANNOUNCE_CLIENT_IDS = new Set<string>([
   '8a06a900-aec4-44fc-8da4-9f90581a74c0', // Andrew (test first)
 ]);
