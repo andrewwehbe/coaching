@@ -6,10 +6,11 @@ import { useEffect, useState } from 'react';
 // per device, then never again.
 const SEEN_KEY = 'coaching:feature-note-to-self-seen';
 
-export function FeatureAnnounce() {
+export function FeatureAnnounce({ enabled = true }: { enabled?: boolean }) {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
+    if (!enabled) return;
     if (typeof window === 'undefined') return;
     try {
       if (localStorage.getItem(SEEN_KEY) === '1') return;
@@ -17,7 +18,7 @@ export function FeatureAnnounce() {
       return;
     }
     setShow(true);
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     if (!show) return;
