@@ -344,6 +344,40 @@ export function LoadInView({
                             : 'upcoming'
                     }
                   />
+                  {/* View the full day on one screen — independent of the
+                      plate's select-to-start tap (stopPropagation). */}
+                  <g
+                    transform={`translate(0 ${plateHeight - 30})`}
+                    style={{ cursor: 'pointer' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`/day/${day.dayId}`);
+                    }}
+                    role="button"
+                    aria-label={`View ${label}`}
+                  >
+                    <rect
+                      x={290}
+                      y={0}
+                      width={70}
+                      height={22}
+                      rx={11}
+                      fill="rgba(125,211,252,0.10)"
+                      stroke="rgba(125,211,252,0.32)"
+                      strokeWidth={0.8}
+                    />
+                    <text
+                      x={325}
+                      y={15}
+                      textAnchor="middle"
+                      fontFamily="ui-sans-serif, system-ui, sans-serif"
+                      fontSize={9}
+                      letterSpacing={1.6}
+                      fill="var(--accent)"
+                    >
+                      VIEW →
+                    </text>
+                  </g>
                 </g>
               </g>
             );
