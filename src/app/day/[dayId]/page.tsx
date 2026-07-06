@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { readSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { buildCue, type Best, type Cue, type Prescription } from '@/lib/cue';
+import { loadBlockBests } from '@/lib/block-best';
 import './day-view.css';
 
 export const dynamic = 'force-dynamic';
@@ -69,6 +70,10 @@ export default async function DayViewPage(props: { params: Params }) {
   const bestByKey = new Map(bests.map((b) => [b.exercise_name_key, b]));
   const noteByKey = new Map(selfNotes.map((n) => [n.exercise_name_key, n.note as string]));
 
+  // Same block-scoped cue anchor as the live session, so this preview shows
+  // the exact goal the client will see. Falls back to all-time best_efforts.
+  const blockBestByKey = await loadBlockBests(supa, user.id, day.program_id, nameKeys);
+
   const totalSets = list.reduce((n, e) => n + (e.prescribed_sets ?? 0), 0);
   const label = shortLabel(day.label);
 
@@ -121,7 +126,7 @@ export default async function DayViewPage(props: { params: Params }) {
                   prescription={ex.prescription_raw}
                   muscleGroup={ex.muscle_group}
                   isCardio={ex.is_cardio}
-                  cue={buildCue(bestEffort, rx)}
+                  cue={buildCue(blockBestByKey.get(ex.name_key) ?? bestEffort, rx)}
                   coachNote={ex.coach_note}
                   selfNote={noteByKey.get(ex.name_key) ?? null}
                 />
