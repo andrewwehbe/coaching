@@ -128,6 +128,9 @@ export async function upsertBestEffortFromSet(
       best_unit: unit ?? null,
       best_reps: reps,
       source_set_id: setId,
+      // An automatic PR clears any manual pin — beating the pinned weight
+      // reclaims the row for the normal block-best cue behaviour.
+      pinned: false,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'client_id,exercise_name_key' },

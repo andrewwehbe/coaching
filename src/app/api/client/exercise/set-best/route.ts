@@ -79,6 +79,8 @@ export async function POST(req: Request) {
       best_unit: set.unit,
       best_reps: set.reps,
       source_set_id: set.id,
+      // Explicit override: wins over the computed current-block best.
+      pinned: true,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'client_id,exercise_name_key' },

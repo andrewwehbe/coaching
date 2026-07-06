@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { readSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { buildCue, type Best, type Prescription } from '@/lib/cue';
+import { loadBlockBests } from '@/lib/block-best';
 import { WorkoutSession, type ExerciseState } from './workout-session';
 import { WorkoutSessionAll, type ExerciseStateAll } from './workout-session-all';
 
@@ -54,7 +55,7 @@ export default async function WorkoutPage(props: { params: Params }) {
   // day, exercises, logs are all keyed off workout.day_id / workout.id and
   // independent of each other — parallel fetch.
   const [{ data: day }, { data: exercises }, { data: logs }] = await Promise.all([
-    supa.from('days').select('id, label').eq('id', workout.day_id).single(),
+    supa.from('days').select('id, label, program_id').eq('id', workout.day_id).single(),
     supa
       .from('exercises')
       .select(
@@ -77,7 +78,7 @@ export default async function WorkoutPage(props: { params: Params }) {
     ? await Promise.all([
         supa
           .from('best_efforts')
-          .select('exercise_name_key, best_weight, best_unit, best_reps')
+          .select('exercise_name_key, best_weight, best_unit, best_reps, pinned')
           .eq('client_id', user.id)
           .in('exercise_name_key', nameKeys)
           .then((r) => r.data ?? []),
@@ -94,12 +95,29 @@ export default async function WorkoutPage(props: { params: Params }) {
     selfNotes.map((n) => [n.exercise_name_key, n.note as string])
   );
 
+  // Cue anchors to the best set logged in the CURRENT block (active program),
+  // not the all-time best_efforts — so a stale peak or an old block doesn't
+  // become a permanent target. Falls back to all-time best when the block has
+  // no data yet (the opening "just log your weight" sessions).
+  const blockBestByKey = await loadBlockBests(
+    supa,
+    user.id,
+    day?.program_id ?? null,
+    nameKeys
+  );
+
   const states: ExerciseState[] = (exercises ?? []).map((ex) => {
     const log = (logs ?? []).find((l) => l.exercise_id === ex.id) ?? null;
     const best = bestByKey.get(ex.name_key) ?? null;
     const bestEffort: Best | null = best
       ? { weight: best.best_weight, unit: best.best_unit, reps: best.best_reps }
       : null;
+    // A manually pinned best is an explicit override and wins over the
+    // computed current-block best; otherwise anchor to the block, falling
+    // back to all-time.
+    const cueBest = best?.pinned
+      ? bestEffort
+      : blockBestByKey.get(ex.name_key) ?? bestEffort;
     const rx: Prescription = {
       setsPrescribed: ex.prescribed_sets,
       repMin: ex.rep_min,
@@ -117,7 +135,7 @@ export default async function WorkoutPage(props: { params: Params }) {
       selfNote: selfNoteByKey.get(ex.name_key) ?? null,
       isCardio: ex.is_cardio,
       cardioType: ex.cardio_type,
-      cue: buildCue(bestEffort, rx),
+      cue: buildCue(cueBest, rx),
       logStatus: log?.status ?? null,
       sets: ((log?.sets as LoggedSetRow[] | undefined) ?? []).map((s) => ({
         setNumber: s.set_number,

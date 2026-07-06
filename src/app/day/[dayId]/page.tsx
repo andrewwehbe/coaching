@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { readSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { buildCue, type Best, type Cue, type Prescription } from '@/lib/cue';
+import { loadBlockBests } from '@/lib/block-best';
 import './day-view.css';
 
 export const dynamic = 'force-dynamic';
@@ -54,7 +55,7 @@ export default async function DayViewPage(props: { params: Params }) {
     ? await Promise.all([
         supa
           .from('best_efforts')
-          .select('exercise_name_key, best_weight, best_unit, best_reps')
+          .select('exercise_name_key, best_weight, best_unit, best_reps, pinned')
           .eq('client_id', user.id)
           .in('exercise_name_key', nameKeys)
           .then((r) => r.data ?? []),
@@ -68,6 +69,10 @@ export default async function DayViewPage(props: { params: Params }) {
     : [[], []];
   const bestByKey = new Map(bests.map((b) => [b.exercise_name_key, b]));
   const noteByKey = new Map(selfNotes.map((n) => [n.exercise_name_key, n.note as string]));
+
+  // Same block-scoped cue anchor as the live session, so this preview shows
+  // the exact goal the client will see. Falls back to all-time best_efforts.
+  const blockBestByKey = await loadBlockBests(supa, user.id, day.program_id, nameKeys);
 
   const totalSets = list.reduce((n, e) => n + (e.prescribed_sets ?? 0), 0);
   const label = shortLabel(day.label);
@@ -104,6 +109,10 @@ export default async function DayViewPage(props: { params: Params }) {
             const bestEffort: Best | null = best
               ? { weight: best.best_weight, unit: best.best_unit, reps: best.best_reps }
               : null;
+            // A manually pinned best overrides the computed block best.
+            const cueBest = best?.pinned
+              ? bestEffort
+              : blockBestByKey.get(ex.name_key) ?? bestEffort;
             const rx: Prescription = {
               setsPrescribed: ex.prescribed_sets,
               repMin: ex.rep_min,
@@ -122,7 +131,7 @@ export default async function DayViewPage(props: { params: Params }) {
                   prescription={ex.prescription_raw}
                   muscleGroup={ex.muscle_group}
                   isCardio={ex.is_cardio}
-                  cue={buildCue(bestEffort, rx)}
+                  cue={buildCue(cueBest, rx)}
                   coachNote={ex.coach_note}
                   selfNote={noteByKey.get(ex.name_key) ?? null}
                 />

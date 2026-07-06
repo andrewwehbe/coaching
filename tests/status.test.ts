@@ -219,6 +219,71 @@ eq(
   'Up 9.5 lb from your last PR',
 );
 
+// ---------- block-best.pickBlockBests ----------
+
+import { pickBlockBests } from '../src/lib/block-best';
+
+eq(
+  'blockBest: empty in → empty out',
+  Array.from(pickBlockBests([]).entries()),
+  [],
+);
+
+eq(
+  'blockBest: max weight wins, ties broken by reps',
+  pickBlockBests([
+    { nameKey: 'a', weight: 50, unit: 'kg', reps: 10 },
+    { nameKey: 'a', weight: 52, unit: 'kg', reps: 8 },
+    { nameKey: 'a', weight: 52, unit: 'kg', reps: 10 },
+  ]).get('a'),
+  { weight: 52, unit: 'kg', reps: 10 },
+);
+
+// A 40kg set must beat a 51lb (~23kg) set — comparison is kg-normalised, so
+// this is exactly the fly-machine case where a stray kg entry outranks the
+// real lb sets. (Data is corrected upstream; the picker still ranks by kg.)
+eq(
+  'blockBest: kg-normalised — 40kg beats 51lb',
+  pickBlockBests([
+    { nameKey: 'fly', weight: 51, unit: 'lb', reps: 8 },
+    { nameKey: 'fly', weight: 40, unit: 'kg', reps: 10 },
+  ]).get('fly'),
+  { weight: 40, unit: 'kg', reps: 10 },
+);
+
+eq(
+  'blockBest: 51lb beats 50lb',
+  pickBlockBests([
+    { nameKey: 'fly', weight: 50, unit: 'lb', reps: 10 },
+    { nameKey: 'fly', weight: 51, unit: 'lb', reps: 8 },
+  ]).get('fly'),
+  { weight: 51, unit: 'lb', reps: 8 },
+);
+
+eq(
+  'blockBest: null weight / null reps skipped',
+  pickBlockBests([
+    { nameKey: 'x', weight: null, unit: 'kg', reps: 5 },
+    { nameKey: 'x', weight: 30, unit: 'kg', reps: null },
+    { nameKey: 'x', weight: 20, unit: 'kg', reps: 6 },
+  ]).get('x'),
+  { weight: 20, unit: 'kg', reps: 6 },
+);
+
+eq(
+  'blockBest: separate name_keys tracked independently',
+  Array.from(
+    pickBlockBests([
+      { nameKey: 'a', weight: 10, unit: 'kg', reps: 8 },
+      { nameKey: 'b', weight: 20, unit: 'kg', reps: 8 },
+    ]).entries(),
+  ),
+  [
+    ['a', { weight: 10, unit: 'kg', reps: 8 }],
+    ['b', { weight: 20, unit: 'kg', reps: 8 }],
+  ],
+);
+
 // ---------- session-summary helpers ----------
 
 import { topSetOf, exerciseDelta } from '../src/lib/session-summary';
