@@ -118,6 +118,7 @@ export default async function DayViewPage(props: { params: Params }) {
                 <ExerciseCard
                   index={ex.position}
                   name={ex.name}
+                  nameKey={ex.name_key}
                   prescription={ex.prescription_raw}
                   muscleGroup={ex.muscle_group}
                   isCardio={ex.is_cardio}
@@ -147,6 +148,7 @@ export default async function DayViewPage(props: { params: Params }) {
 function ExerciseCard({
   index,
   name,
+  nameKey,
   prescription,
   muscleGroup,
   isCardio,
@@ -156,6 +158,7 @@ function ExerciseCard({
 }: {
   index: number;
   name: string;
+  nameKey: string;
   prescription: string | null;
   muscleGroup: string | null;
   isCardio: boolean;
@@ -207,6 +210,16 @@ function ExerciseCard({
               </span>
               {selfNote}
             </p>
+          )}
+
+          {!isCardio && (
+            <Link
+              href={`/exercise/history?ex=${encodeURIComponent(nameKey)}`}
+              prefetch={false}
+              className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-text transition-colors"
+            >
+              History &amp; set best →
+            </Link>
           )}
         </div>
       </div>
