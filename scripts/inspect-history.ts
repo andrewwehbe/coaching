@@ -35,7 +35,7 @@ console.log(`Sheet: ${wb.SheetNames[wb.SheetNames.length - 1]}`);
 console.log(`Total rows: ${rows.length}\n`);
 
 // ---- Find week headers ----
-// Cols 0+1 are name + prescription. ClientB's sheet has "Week 1" in col 0
+// Cols 0+1 are name + prescription. Some sheets have "Week 1" in col 0
 // by mistake — skip it. Same gating the Apps Script had via FIRST_LOG_COL.
 const FIRST_LOG_COL = 2;
 const header = rows[0] ?? [];
@@ -166,7 +166,7 @@ function parseCell(text: string): SetRow[] {
       continue;
     }
 
-    // "weight unit reps reps"  — ClientB's most common form, no explicit x
+    // "weight unit reps reps"  — a common sheet form, no explicit x
     //   "10 kgs 7-8 reps", "70 lbs 7 reps", "7.5kg 6 reps"
     const wur = rest.match(
       /(\d+(?:\.\d+)?)\s*(kgs?|lbs?|lb)\s+(\d+(?:\s*-\s*\d+)?)\s*reps?\b/i

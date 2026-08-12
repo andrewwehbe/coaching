@@ -96,7 +96,7 @@ function normalizePrescription(s: string): string {
     .replace(/×/g, 'x')
     .replace(/[–—]/g, '-')
     .replace(/\s*\/\/.*$/, '') // strip "// alternative" trailing comment
-    .replace(/^(\s*\d+)\s*\/\s*(\d+)/, '$1x$2') // "2/5-8" → "2x5-8" (ClientG typo)
+    .replace(/^(\s*\d+)\s*\/\s*(\d+)/, '$1x$2') // "2/5-8" → "2x5-8" (common typo)
     .trim();
 }
 function parsePrescription(raw: string): {
@@ -191,7 +191,7 @@ function parseCellSets(text: string): { weight: number | null; unit: 'kg' | 'lb'
       });
       continue;
     }
-    // Permissive "weight + reps" — handles ClientG's "84 for 10", "17.5 lb 5-6",
+    // Permissive "weight + reps" — handles "84 for 10", "17.5 lb 5-6",
     // "40 kg 6", "65 6", "25 6-7", "15 kg for 10". Optional unit, optional
     // "for"/"x" separator, no trailing "reps" word required.
     const gen = line.match(
@@ -248,7 +248,7 @@ function parseFile(file: Buffer | ArrayBuffer): {
   let cur: Day | null = null;
 
   // Some sheets put the first day label in col A of the header row alongside
-  // the "Week N" headers (e.g. Sweetie's "Day 1"). If row 0 col A is non-empty,
+  // the "Week N" headers (e.g. a bare "Day 1"). If row 0 col A is non-empty,
   // not itself a Week header, and col B is empty, treat as the implicit first
   // day. Mirrors sheet-parser.ts behavior so seed and live upload agree.
   const headerColA = String(header[0] ?? '').trim();
