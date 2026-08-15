@@ -9,7 +9,9 @@ import { log as logger } from '@/lib/log';
 const Body = z.object({
   exerciseId: z.string().uuid(),
   setNumber: z.number().int().min(1).max(20),
-  weight: z.number().nullable().optional(),
+  // Bounds mirror the sets_weight_sane DB check (0035) so fat-fingers get
+  // a friendly 400 instead of a DB error.
+  weight: z.number().min(0).max(1500).nullable().optional(),
   unit: z.enum(['kg', 'lb']).nullable().optional(),
   reps: z.number().int().min(1).max(200).nullable().optional(),
   rir: z.number().int().min(0).max(10).nullable().optional(),

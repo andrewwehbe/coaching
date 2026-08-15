@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-import { readSession, SESSION_COOKIE } from '@/lib/auth';
+import { hashSessionToken, readSession, SESSION_COOKIE } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { audit } from '@/lib/audit';
 
@@ -43,7 +43,11 @@ export async function POST(_req: Request, { params }: { params: Params }) {
   // so the next request bounces them to /login cleanly.
   const cookieStore = await cookies();
   const currentToken = cookieStore.get(SESSION_COOKIE)?.value;
-  if (currentToken === id) {
+  // Sessions store hashed ids since 0036; raw compare covers pre-migration rows.
+  if (
+    currentToken &&
+    (id === hashSessionToken(currentToken) || id === currentToken)
+  ) {
     cookieStore.delete(SESSION_COOKIE);
   }
 

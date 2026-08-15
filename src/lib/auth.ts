@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { cache } from 'react';
 import { cookies, headers } from 'next/headers';
 import bcrypt from 'bcryptjs';
@@ -29,6 +29,15 @@ export type SessionUser =
 
 function newToken(): string {
   return randomBytes(32).toString('hex');
+}
+
+/**
+ * sessions.id stores this digest, never the raw bearer token — a DB read
+ * leak must not yield working cookies (0036). Raw tokens and sha256 hex
+ * are both 64 hex chars, so the prefix is what marks a hashed id.
+ */
+export function hashSessionToken(token: string): string {
+  return 'sha256:' + createHash('sha256').update(token).digest('hex');
 }
 
 export async function hashPin(pin: string): Promise<string> {
@@ -261,7 +270,7 @@ export async function issueSession(user: SessionUser, userAgent: string | null):
   // Devices are now created only by /api/push/subscribe, so a real device row
   // implies a real subscription. Sessions just record device_id = null here.
   await supa.from('sessions').insert({
-    id: token,
+    id: hashSessionToken(token),
     user_type: user.type,
     user_id: user.id,
     device_id: null,
@@ -337,11 +346,13 @@ async function readSessionLegacy(
   ua: string | null,
 ): Promise<SessionUser | null> {
   const supa = db();
-  const { data: session } = await supa
+  // Hashed id first (0036), raw id as pre-migration fallback.
+  const { data: rows } = await supa
     .from('sessions')
     .select('*')
-    .eq('id', token)
-    .maybeSingle();
+    .in('id', [hashSessionToken(token), token])
+    .limit(1);
+  const session = rows?.[0];
 
   if (!session || session.revoked) return null;
   if (new Date(session.expires_at) < new Date()) return null;
@@ -355,7 +366,7 @@ async function readSessionLegacy(
       last_used_ip: ip,
       last_used_ua: ua,
     })
-    .eq('id', token)
+    .eq('id', session.id)
     .then(undefined, () => {});
 
   if (session.user_type === 'coach') {
@@ -388,7 +399,11 @@ export async function revokeSession(): Promise<void> {
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (token) {
     const supa = db();
-    await supa.from('sessions').update({ revoked: true }).eq('id', token);
+    // Hashed id (0036) with raw-id fallback for pre-migration rows.
+    await supa
+      .from('sessions')
+      .update({ revoked: true })
+      .in('id', [hashSessionToken(token), token]);
     cookieStore.delete(SESSION_COOKIE);
   }
 }

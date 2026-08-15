@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-import { readSession, SESSION_COOKIE } from '@/lib/auth';
+import { hashSessionToken, readSession, SESSION_COOKIE } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -18,6 +18,10 @@ export async function GET() {
 
   const cookieStore = await cookies();
   const currentToken = cookieStore.get(SESSION_COOKIE)?.value ?? null;
+  // Sessions store hashed ids since 0036; raw compare covers pre-migration rows.
+  const currentIds = currentToken
+    ? new Set([hashSessionToken(currentToken), currentToken])
+    : new Set<string>();
 
   const supa = db();
   const { data } = await supa
@@ -38,7 +42,7 @@ export async function GET() {
     expiresAt: s.expires_at,
     lastUsedIp: s.last_used_ip,
     lastUsedUa: s.last_used_ua,
-    isCurrent: s.id === currentToken,
+    isCurrent: currentIds.has(s.id),
   }));
 
   return NextResponse.json({ sessions });

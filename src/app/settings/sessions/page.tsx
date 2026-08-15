@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 
-import { readSession, SESSION_COOKIE } from '@/lib/auth';
+import { hashSessionToken, readSession, SESSION_COOKIE } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { linkForClient, linkForCoach } from '@/lib/coach-link';
 import { HeaderMenu } from '@/components/header-menu';
@@ -17,6 +17,10 @@ export default async function SessionsPage() {
 
   const cookieStore = await cookies();
   const currentToken = cookieStore.get(SESSION_COOKIE)?.value ?? null;
+  // Sessions store hashed ids since 0036; raw compare covers pre-migration rows.
+  const currentIds = currentToken
+    ? new Set([hashSessionToken(currentToken), currentToken])
+    : new Set<string>();
 
   const supa = db();
   const { data: rows } = await supa
@@ -35,7 +39,7 @@ export default async function SessionsPage() {
     expiresAt: s.expires_at,
     lastUsedIp: s.last_used_ip,
     lastUsedUa: s.last_used_ua,
-    isCurrent: s.id === currentToken,
+    isCurrent: currentIds.has(s.id),
   }));
 
   const homeHref = user.type === 'coach' ? '/coach' : '/today';
