@@ -1,47 +1,34 @@
 'use client';
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
-import { OfflineBanner } from '@/components/offline-banner';
 import { SelfNoteCard } from './self-note-card';
-import { enqueueAndSend, flushQueue, pendingCount } from '@/lib/offline-queue';
+import { enqueueAndSend } from '@/lib/offline-queue';
 import { toggleWeightSign } from '@/lib/weight';
+import {
+  advanceFrom,
+  CoachNoteCard,
+  DeloadCard,
+  describeSet,
+  DoneScreen,
+  ExerciseHeading,
+  NoExercisesScreen,
+  num,
+  PainModal,
+  ReasonModal,
+  SessionChrome,
+  useOfflineSync,
+  useWorkoutLifecycle,
+  type LoggedSet,
+  type ModalState,
+  type ExerciseCore,
+} from './shared';
 
-export type LoggedSet = {
-  setNumber: number;
-  weight: number | null;
-  unit: 'kg' | 'lb' | null;
-  reps: number | null;
-  rir: number | null;
-  cardioMinutes: number | null;
-  videoUrl: string | null;
-  notes: string | null;
-};
+export type { LoggedSet };
 
-export type ExerciseStateAll = {
-  id: string;
-  name: string;
-  position: number;
-  prescriptionRaw: string | null;
-  prescribedSets: number | null;
-  repMin: number | null;
-  repMax: number | null;
-  coachNote: string | null;
-  selfNote: string | null;
-  isCardio: boolean;
-  cardioType: 'treadmill' | 'elliptical' | 'stairmaster' | null;
-  logStatus: 'completed' | 'skipped' | 'pain' | null;
-  painReportedAndContinuing?: boolean;
-  sets: LoggedSet[];
+export type ExerciseStateAll = ExerciseCore & {
   priorSets: LoggedSet[];
 };
-
-type ModalState =
-  | { kind: 'none' }
-  | { kind: 'skip'; exerciseId: string; name: string }
-  | { kind: 'pain'; exerciseId: string; name: string };
 
 type RowDraft = {
   weight: string;
@@ -116,12 +103,6 @@ function isRowEmpty(r: RowDraft, isCardio: boolean): boolean {
   return r.weight.trim() === '' && r.reps.trim() === '';
 }
 
-function num(s: string): number | null {
-  if (s.trim() === '') return null;
-  const n = Number(s.replace(',', '.'));
-  return Number.isFinite(n) ? n : null;
-}
-
 export function WorkoutSessionAll({
   workoutId,
   dayLabel,
@@ -135,46 +116,10 @@ export function WorkoutSessionAll({
   isDeload?: boolean;
   exercises: ExerciseStateAll[];
 }) {
-  const router = useRouter();
   const [state, setState] = useState(exercises);
-  const [doneNow, setDoneNow] = useState(completed);
   const [modal, setModal] = useState<ModalState>({ kind: 'none' });
-  const [submitting, setSubmitting] = useState(false);
-  const [pending, setPending] = useState(0);
-  const [online, setOnline] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    setOnline(typeof navigator === 'undefined' ? true : navigator.onLine);
-    let cancelled = false;
-    async function refresh() {
-      const c = await pendingCount();
-      if (!cancelled) setPending(c);
-    }
-    async function flush() {
-      const sent = await flushQueue();
-      if (sent > 0) router.refresh();
-      await refresh();
-    }
-    refresh();
-    flush();
-    const onOnline = () => {
-      setOnline(true);
-      void flush();
-    };
-    const onOffline = () => setOnline(false);
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-    const interval = window.setInterval(() => {
-      void refresh();
-    }, 4000);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
-      window.clearInterval(interval);
-    };
-  }, [router]);
+  const { online, pending } = useOfflineSync();
 
   const [currentIdx, setCurrentIdx] = useState(() => {
     const i = exercises.findIndex((e) => e.logStatus == null);
@@ -183,6 +128,22 @@ export function WorkoutSessionAll({
   const current = state[currentIdx] ?? null;
   const completedCount = state.filter((e) => e.logStatus != null).length;
   const allDone = state.length > 0 && completedCount === state.length;
+
+  const {
+    submitting,
+    doneNow,
+    submitSkip,
+    submitPain,
+    completeWorkout,
+    cancelWorkout,
+  } = useWorkoutLifecycle({
+    workoutId,
+    completed,
+    modal,
+    setModal,
+    setState,
+    setCurrentIdx,
+  });
 
   const [rowsByExerciseId, setRowsByExerciseId] = useState<Record<string, RowDraft[]>>(
     () => Object.fromEntries(exercises.map((e) => [e.id, buildInitialRows(e)])),
@@ -237,17 +198,14 @@ export function WorkoutSessionAll({
     });
   }
 
-  function advanceFrom(updated: ExerciseStateAll[], fromIdx: number): number {
-    for (let i = fromIdx + 1; i < updated.length; i++) {
-      if (updated[i].logStatus == null) return i;
-    }
-    for (let i = 0; i < fromIdx; i++) {
-      if (updated[i].logStatus == null) return i;
-    }
-    return fromIdx;
-  }
-
-  async function saveExercise() {
+  /**
+   * Optimistic: mark the exercise complete and advance immediately; the
+   * per-set writes (each a single log_set RPC server-side) settle in the
+   * background. On any hard failure (4xx — offline/5xx auto-queue as 202)
+   * the exercise rolls back, the view returns to it, and the drafts are
+   * still in the rows, so nothing is lost.
+   */
+  function saveExercise() {
     if (!current) return;
     setErrorMsg(null);
     const rows = rowsByExerciseId[current.id] ?? [];
@@ -260,242 +218,114 @@ export function WorkoutSessionAll({
       setErrorMsg('Enter at least one set before saving.');
       return;
     }
-    setSubmitting(true);
-    try {
-      const savedSets: LoggedSet[] = [];
-      for (const { row, setNumber } of toSubmit) {
-        const body: Record<string, unknown> = {
-          exerciseId: current.id,
-          setNumber,
-        };
-        if (current.isCardio) {
-          body.cardioMinutes = num(row.cardioMin);
-        } else {
-          body.weight = num(row.weight);
-          body.unit = row.unit;
-          body.reps = num(row.reps);
-          body.rir = num(row.rir);
-        }
-        if (row.notes) body.notes = row.notes;
-        const res = await enqueueAndSend(`/api/client/workout/${workoutId}/set`, body);
-        if (!res.ok && res.status !== 202) {
-          const err = await res.json().catch(() => ({}));
-          setErrorMsg(err.error ?? `Failed to save set ${setNumber}`);
-          return;
-        }
-        savedSets.push({
-          setNumber,
-          weight: (body.weight as number | null) ?? null,
-          unit: (body.unit as 'kg' | 'lb' | undefined) ?? null,
-          reps: (body.reps as number | null) ?? null,
-          rir: (body.rir as number | null) ?? null,
-          cardioMinutes: (body.cardioMinutes as number | null) ?? null,
-          videoUrl: null,
-          notes: (body.notes as string | null) ?? null,
-        });
-      }
 
-      setState((prev) => {
-        const next = prev.map((e) =>
-          e.id === current.id
-            ? { ...e, sets: savedSets, logStatus: 'completed' as const }
-            : e,
+    const bodies = toSubmit.map(({ row, setNumber }) => {
+      const body: Record<string, unknown> = {
+        exerciseId: current.id,
+        setNumber,
+      };
+      if (current.isCardio) {
+        body.cardioMinutes = num(row.cardioMin);
+      } else {
+        body.weight = num(row.weight);
+        body.unit = row.unit;
+        body.reps = num(row.reps);
+        body.rir = num(row.rir);
+      }
+      if (row.notes) body.notes = row.notes;
+      return { body, setNumber };
+    });
+
+    const savedSets: LoggedSet[] = bodies.map(({ body, setNumber }) => ({
+      setNumber,
+      weight: (body.weight as number | null) ?? null,
+      unit: (body.unit as 'kg' | 'lb' | undefined) ?? null,
+      reps: (body.reps as number | null) ?? null,
+      rir: (body.rir as number | null) ?? null,
+      cardioMinutes: (body.cardioMinutes as number | null) ?? null,
+      videoUrl: null,
+      notes: (body.notes as string | null) ?? null,
+    }));
+
+    // Rollback snapshot.
+    const prevExercise = current;
+    const prevIdx = currentIdx;
+
+    // ---- Optimistic apply ----
+    setState((prev) => {
+      const next = prev.map((e) =>
+        e.id === current.id
+          ? { ...e, sets: savedSets, logStatus: 'completed' as const }
+          : e,
+      );
+      setCurrentIdx((idx) => advanceFrom(next, idx));
+      return next;
+    });
+
+    // ---- Background settle ----
+    void (async () => {
+      const rollback = (message: string) => {
+        setState((prev) =>
+          prev.map((e) => (e.id === prevExercise.id ? prevExercise : e)),
         );
-        setCurrentIdx((idx) => advanceFrom(next, idx));
-        return next;
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function submitSkip(reason: string) {
-    if (modal.kind !== 'skip') return;
-    setSubmitting(true);
-    try {
-      const res = await enqueueAndSend(`/api/client/workout/${workoutId}/skip`, {
-        exerciseId: modal.exerciseId,
-        reason,
-      });
-      if (!res.ok && res.status !== 202) {
-        alert('Failed to skip');
-        return;
-      }
-      setState((prev) => {
-        const next = prev.map((e) =>
-          e.id === modal.exerciseId ? { ...e, logStatus: 'skipped' as const } : e,
-        );
-        setCurrentIdx((idx) => advanceFrom(next, idx));
-        return next;
-      });
-      setModal({ kind: 'none' });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function submitPain(
-    reason: string,
-    painType: 'joint' | 'tendon' | 'muscle' | null,
-    proceed: boolean,
-  ) {
-    if (modal.kind !== 'pain') return;
-    setSubmitting(true);
-    try {
-      const res = await enqueueAndSend(`/api/client/workout/${workoutId}/pain`, {
-        exerciseId: modal.exerciseId,
-        reason,
-        pain_type: painType,
-        proceed,
-      });
-      if (!res.ok && res.status !== 202) {
-        alert('Failed to send pain report');
-        return;
-      }
-      setState((prev) => {
-        const next = prev.map((e) =>
-          e.id === modal.exerciseId
-            ? proceed
-              ? { ...e, painReportedAndContinuing: true }
-              : { ...e, logStatus: 'pain' as const }
-            : e,
-        );
-        if (!proceed) setCurrentIdx((idx) => advanceFrom(next, idx));
-        return next;
-      });
-      setModal({ kind: 'none' });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function completeWorkout() {
-    setSubmitting(true);
-    try {
-      const res = await enqueueAndSend(`/api/client/workout/${workoutId}/done`, {});
-      if (!res.ok && res.status !== 202) {
-        alert('Failed to complete workout');
-        return;
-      }
-      setDoneNow(true);
+        setCurrentIdx(prevIdx);
+        setErrorMsg(message);
+      };
       try {
-        navigator.serviceWorker?.controller?.postMessage({
-          type: 'invalidate-paths',
-          paths: ['/today', '/trends'],
-        });
-      } catch {}
-      router.push(`/workout/${workoutId}/summary`);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function cancelWorkout() {
-    if (!confirm('Cancel this workout? Nothing will be saved.')) return;
-    setSubmitting(true);
-    try {
-      const res = await fetch(`/api/client/workout/${workoutId}/cancel`, { method: 'POST' });
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
-        alert(e.error ?? 'Could not cancel');
-        return;
+        const results = await Promise.all(
+          bodies.map(({ body }) =>
+            enqueueAndSend(`/api/client/workout/${workoutId}/set`, body),
+          ),
+        );
+        for (let i = 0; i < results.length; i++) {
+          const res = results[i];
+          if (!res.ok && res.status !== 202) {
+            const err = await res.json().catch(() => ({}));
+            rollback(
+              (err.error ?? `Failed to save set ${bodies[i].setNumber}`) +
+                ' — nothing was marked done. Your numbers are still below.',
+            );
+            return;
+          }
+        }
+      } catch {
+        rollback('Failed to save — nothing was marked done. Try again.');
       }
-      router.push('/today');
-      router.refresh();
-    } finally {
-      setSubmitting(false);
-    }
+    })();
   }
 
   if (doneNow || allDone) {
     return (
-      <main className="flex flex-1 flex-col items-center justify-center px-6 text-center space-y-6">
-        <div className="h-20 w-20 rounded-full bg-primary/15 ring-1 ring-primary/40 flex items-center justify-center shadow-[0_0_60px_-10px_rgba(34,197,94,0.7)]">
-          <svg className="h-10 w-10 text-primary-hi" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
-        </div>
-        <h1 className="text-3xl font-bold tracking-tight">Workout done.</h1>
-        <p className="text-muted">
-          {completedCount} of {state.length} exercises logged.
-        </p>
-        {!doneNow && (
-          <button
-            onClick={completeWorkout}
-            disabled={submitting}
-            className="h-14 px-8 rounded-2xl bg-primary hover:bg-primary-hi text-bg font-semibold disabled:opacity-50 transition-colors shadow-[0_10px_40px_-12px_rgba(34,197,94,0.7)]"
-          >
-            Finish & save
-          </button>
-        )}
-        <Link href="/today" className="text-primary-hi hover:text-primary text-sm transition-colors">
-          Back to today
-        </Link>
-      </main>
+      <DoneScreen
+        completedCount={completedCount}
+        total={state.length}
+        showFinish={!doneNow}
+        submitting={submitting}
+        onFinish={completeWorkout}
+      />
     );
   }
 
   if (!current) {
-    return (
-      <main className="flex flex-1 flex-col items-center justify-center px-6 text-center space-y-4">
-        <h1 className="text-2xl font-semibold">No exercises today.</h1>
-        <Link href="/today" className="text-primary-hi hover:text-primary transition-colors">
-          Back to today
-        </Link>
-      </main>
-    );
+    return <NoExercisesScreen />;
   }
 
   const rows = rowsByExerciseId[current.id] ?? [];
 
   return (
     <main className="flex flex-1 flex-col px-5 py-6 max-w-md w-full mx-auto">
-      <header className="flex items-center justify-between mb-3 text-sm">
-        <Link href="/today" className="text-muted hover:text-text transition-colors">
-          ← {dayLabel}
-        </Link>
-        <span className="font-medium text-faint tabular-nums">
-          {completedCount} / {state.length}
-        </span>
-      </header>
+      <SessionChrome
+        dayLabel={dayLabel}
+        completedCount={completedCount}
+        total={state.length}
+        currentIdx={currentIdx}
+        onPrev={() => setCurrentIdx((i) => Math.max(0, i - 1))}
+        onNext={() => setCurrentIdx((i) => Math.min(state.length - 1, i + 1))}
+        online={online}
+        pending={pending}
+      />
 
-      <nav className="flex items-center justify-between gap-2 mb-4">
-        <button
-          type="button"
-          onClick={() => setCurrentIdx((i) => Math.max(0, i - 1))}
-          disabled={currentIdx === 0}
-          className="flex-1 h-10 rounded-xl border border-border text-muted text-sm font-medium hover:bg-surface-2 hover:text-text transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          ← Prev
-        </button>
-        <span className="text-xs text-faint tabular-nums px-2">
-          {currentIdx + 1} of {state.length}
-        </span>
-        <button
-          type="button"
-          onClick={() => setCurrentIdx((i) => Math.min(state.length - 1, i + 1))}
-          disabled={currentIdx >= state.length - 1}
-          className="flex-1 h-10 rounded-xl border border-border text-muted text-sm font-medium hover:bg-surface-2 hover:text-text transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          Next →
-        </button>
-      </nav>
-
-      <OfflineBanner online={online} pending={pending} />
-
-      <div className="mb-6 h-1 w-full rounded-full bg-surface-2 overflow-hidden">
-        <div
-          className="h-full rounded-full bg-primary transition-all duration-500"
-          style={{ width: `${state.length ? (completedCount / state.length) * 100 : 0}%` }}
-        />
-      </div>
-
-      {current.coachNote && (
-        <div className="mb-5 rounded-2xl border border-accent/30 bg-accent/8 px-4 py-3 text-sm">
-          <p className="text-xs uppercase tracking-wide text-accent mb-1 font-medium">From your coach</p>
-          <p className="text-text">{current.coachNote}</p>
-        </div>
-      )}
+      <CoachNoteCard note={current.coachNote} />
 
       <SelfNoteCard
         workoutId={workoutId}
@@ -508,35 +338,9 @@ export function WorkoutSessionAll({
         }
       />
 
-      <p className="text-xs uppercase tracking-[0.18em] text-faint mb-1.5">
-        Exercise {current.position}
-        {current.logStatus === 'completed' && (
-          <span className="ml-2 text-primary-hi normal-case tracking-normal">· done</span>
-        )}
-        {current.logStatus === 'skipped' && (
-          <span className="ml-2 text-muted normal-case tracking-normal">· skipped</span>
-        )}
-        {current.logStatus === 'pain' && (
-          <span className="ml-2 text-warn normal-case tracking-normal">· pain reported</span>
-        )}
-        {current.painReportedAndContinuing && current.logStatus !== 'pain' && (
-          <span className="ml-2 text-warn normal-case tracking-normal">· pain reported · go carefully</span>
-        )}
-      </p>
-      <h1 className="text-3xl font-bold leading-tight tracking-tight mb-2">{current.name}</h1>
-      <p className="text-sm text-muted mb-5">{current.prescriptionRaw ?? '—'}</p>
+      <ExerciseHeading ex={current} />
 
-      {isDeload && (
-        <div className="mb-4 rounded-2xl border border-accent/40 bg-accent/8 px-4 py-3 text-sm">
-          <p className="text-xs uppercase tracking-[0.18em] text-accent mb-1 font-medium">
-            Deload week
-          </p>
-          <p className="text-text">
-            Drop ~25% off your usual load. Keep the prescribed reps, but stop
-            ~3 reps shy of failure on every set.
-          </p>
-        </div>
-      )}
+      {isDeload && <DeloadCard className="mb-4" />}
 
       {current.priorSets.length > 0 && (
         <section className="mb-4 rounded-2xl border border-border bg-surface/40 px-4 py-3">
@@ -602,14 +406,11 @@ export function WorkoutSessionAll({
         <button
           type="button"
           onClick={saveExercise}
-          disabled={submitting}
           className="w-full h-14 rounded-2xl bg-primary hover:bg-primary-hi active:bg-primary-press text-bg text-base font-semibold disabled:opacity-40 disabled:shadow-none transition-all shadow-[0_10px_40px_-12px_rgba(34,197,94,0.7)]"
         >
-          {submitting
-            ? 'Saving…'
-            : current.logStatus === 'completed'
-              ? 'Save changes & next'
-              : 'Save sets & next'}
+          {current.logStatus === 'completed'
+            ? 'Save changes & next'
+            : 'Save sets & next'}
         </button>
 
         <div className="pt-3 mt-3 border-t border-border flex items-center justify-between gap-3">
@@ -630,19 +431,21 @@ export function WorkoutSessionAll({
       </section>
 
       {modal.kind === 'skip' && (
-        <SkipModal
-          name={modal.name}
-          onClose={() => setModal({ kind: 'none' })}
-          onSubmit={submitSkip}
+        <ReasonModal
+          title={`Skip ${modal.name}?`}
+          onCancel={() => setModal({ kind: 'none' })}
           submitting={submitting}
+          actions={[{ label: 'Skip exercise', tone: 'primary', onClick: submitSkip }]}
         />
       )}
       {modal.kind === 'pain' && (
         <PainModal
-          name={modal.name}
-          onClose={() => setModal({ kind: 'none' })}
-          onSubmit={submitPain}
+          title={`Report pain on ${modal.name}`}
+          subtitle="Your coach will be notified either way."
+          onCancel={() => setModal({ kind: 'none' })}
           submitting={submitting}
+          onContinue={(r, t) => submitPain(r, t, true)}
+          onSkip={(r, t) => submitPain(r, t, false)}
         />
       )}
     </main>
@@ -776,146 +579,6 @@ function SetRow({
             className="mt-1 w-full px-2 py-2 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-base tabular-nums"
           />
         </label>
-      </div>
-    </div>
-  );
-}
-
-function describeSet(s: LoggedSet, isCardio: boolean): string {
-  if (isCardio) return s.cardioMinutes != null ? `${s.cardioMinutes} min` : '—';
-  if (s.weight == null && s.reps == null) return '—';
-  const w = s.weight != null ? `${s.weight}${(s.unit ?? '').toUpperCase()}` : '—';
-  const r = s.reps != null ? `× ${s.reps}` : '';
-  const rir = s.rir != null ? `  ·  RIR ${s.rir}` : '';
-  return `${w} ${r}${rir}`.trim();
-}
-
-function SkipModal({
-  name,
-  onClose,
-  onSubmit,
-  submitting,
-}: {
-  name: string;
-  onClose: () => void;
-  onSubmit: (reason: string) => void;
-  submitting: boolean;
-}) {
-  const [reason, setReason] = useState('');
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-bg/85 backdrop-blur flex items-end sm:items-center justify-center p-4"
-      style={{ paddingBottom: 'max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))' }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-sm bg-surface rounded-2xl border border-border p-5 space-y-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-lg font-semibold">Skip {name}?</h3>
-        <textarea
-          autoFocus
-          rows={3}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="Reason (e.g., equipment busy, short on time)"
-          className="w-full px-3 py-2 rounded-xl bg-surface-2 border border-border focus:outline-none focus:border-primary/60 text-base"
-        />
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 h-11 rounded-xl border border-border text-muted text-sm font-medium hover:bg-surface-2 hover:text-text"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={submitting || !reason.trim()}
-            onClick={() => onSubmit(reason.trim())}
-            className="flex-1 h-11 rounded-xl bg-warn/20 border border-warn/40 text-warn font-medium disabled:opacity-50"
-          >
-            Skip
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PainModal({
-  name,
-  onClose,
-  onSubmit,
-  submitting,
-}: {
-  name: string;
-  onClose: () => void;
-  onSubmit: (reason: string, painType: 'joint' | 'tendon' | 'muscle' | null, proceed: boolean) => void;
-  submitting: boolean;
-}) {
-  const [reason, setReason] = useState('');
-  const [painType, setPainType] = useState<'joint' | 'tendon' | 'muscle' | null>(null);
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-bg/85 backdrop-blur flex items-end sm:items-center justify-center p-4"
-      style={{ paddingBottom: 'max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))' }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-sm bg-surface rounded-2xl border border-border p-5 space-y-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-lg font-semibold">Pain on {name}?</h3>
-        <div className="flex gap-2">
-          {(['joint', 'tendon', 'muscle'] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setPainType(t)}
-              className={`flex-1 h-10 rounded-xl border text-xs uppercase tracking-[0.18em] ${
-                painType === t
-                  ? 'border-danger/60 bg-danger/10 text-danger'
-                  : 'border-border text-muted'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-        <textarea
-          autoFocus
-          rows={3}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="Where / when did it hurt?"
-          className="w-full px-3 py-2 rounded-xl bg-surface-2 border border-border focus:outline-none focus:border-primary/60 text-base"
-        />
-        <div className="grid grid-cols-1 gap-2">
-          <button
-            type="button"
-            disabled={submitting || !reason.trim()}
-            onClick={() => onSubmit(reason.trim(), painType, false)}
-            className="h-11 rounded-xl bg-danger/15 border border-danger/40 text-danger text-sm font-medium disabled:opacity-50"
-          >
-            Stop this exercise
-          </button>
-          <button
-            type="button"
-            disabled={submitting || !reason.trim()}
-            onClick={() => onSubmit(reason.trim(), painType, true)}
-            className="h-11 rounded-xl border border-border text-text text-sm font-medium hover:bg-surface-2 disabled:opacity-50"
-          >
-            Keep going carefully
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-10 text-xs text-muted hover:text-text"
-          >
-            Never mind
-          </button>
-        </div>
       </div>
     </div>
   );

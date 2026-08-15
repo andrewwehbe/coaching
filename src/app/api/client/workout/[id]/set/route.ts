@@ -1,17 +1,19 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { z } from 'zod';
 
+import { SESSION_COOKIE } from '@/lib/auth';
 import { db } from '@/lib/supabase';
-import { loadOpenClientWorkout } from '@/lib/workout-guard';
-import { upsertBestEffortFromSet } from '@/lib/best-effort';
+import { prDeltaMessage, type BestSnapshot } from '@/lib/best-effort';
 import { log as logger } from '@/lib/log';
 
 const Body = z.object({
   exerciseId: z.string().uuid(),
   setNumber: z.number().int().min(1).max(20),
   // Bounds mirror the sets_weight_sane DB check (0035) so fat-fingers get
-  // a friendly 400 instead of a DB error.
-  weight: z.number().min(0).max(1500).nullable().optional(),
+  // a friendly 400 instead of a DB error. Negatives are legitimate — the
+  // logger's ± toggle covers counterweighted machines.
+  weight: z.number().min(-500).max(1500).nullable().optional(),
   unit: z.enum(['kg', 'lb']).nullable().optional(),
   reps: z.number().int().min(1).max(200).nullable().optional(),
   rir: z.number().int().min(0).max(10).nullable().optional(),
@@ -24,10 +26,20 @@ const Body = z.object({
 
 type Params = Promise<{ id: string }>;
 
+/**
+ * Hot path: called for every set a client logs (~every 90s mid-workout).
+ * The entire write — session auth, ownership guard, exercise verify,
+ * log + set upserts, best-effort/PR update — runs inside the log_set
+ * Postgres function (0037): one DB round trip, one transaction. The PR
+ * delta message is built here from the returned prev snapshot so the
+ * tested pure helper stays the single source of truth.
+ */
 export async function POST(req: Request, props: { params: Params }) {
   const { id } = await props.params;
-  const ctx = await loadOpenClientWorkout(id);
-  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
@@ -38,92 +50,71 @@ export async function POST(req: Request, props: { params: Params }) {
     return NextResponse.json({ error: 'Invalid set payload' }, { status: 400 });
   }
 
-  // Storage paths are namespaced per user by /api/client/upload-url
-  // ({clientId}/{ts}-{rand}-{filename}). Reject any path outside the
-  // caller's own prefix — otherwise a client could attach another
-  // client's object to their set and have coach views sign it.
-  if (
-    parsed.data.videoPath &&
-    !parsed.data.videoPath.startsWith(`${ctx.user.id}/`)
-  ) {
-    logger.warn('set.video_path_rejected', {
-      workoutId: id,
-      clientId: ctx.user.id,
-    });
-    return NextResponse.json({ error: 'Invalid video path' }, { status: 400 });
-  }
-
   const supa = db();
+  const { data, error } = await supa.rpc('log_set', {
+    p_token: token,
+    p_workout_id: id,
+    p_exercise_id: parsed.data.exerciseId,
+    p_set_number: parsed.data.setNumber,
+    p_weight: parsed.data.weight ?? null,
+    p_unit: parsed.data.unit ?? null,
+    p_reps: parsed.data.reps ?? null,
+    p_rir: parsed.data.rir ?? null,
+    p_cardio_minutes: parsed.data.cardioMinutes ?? null,
+    p_video_path: parsed.data.videoPath ?? null,
+    p_notes: parsed.data.notes ?? null,
+  });
 
-  // Verify the exercise belongs to this workout's day.
-  const { data: ex } = await supa
-    .from('exercises')
-    .select('id, day_id, name_key, is_cardio')
-    .eq('id', parsed.data.exerciseId)
-    .maybeSingle();
-  if (!ex || ex.day_id !== ctx.workout.dayId) {
-    return NextResponse.json({ error: 'Exercise not in this workout' }, { status: 400 });
-  }
-
-  // Upsert exercise_log (one per workout+exercise).
-  const { data: log, error: logErr } = await supa
-    .from('exercise_logs')
-    .upsert(
-      {
-        workout_id: ctx.workout.id,
-        exercise_id: parsed.data.exerciseId,
-        status: 'completed',
-      },
-      { onConflict: 'workout_id,exercise_id' }
-    )
-    .select('id, status')
-    .single();
-  if (logErr || !log) {
-    return NextResponse.json({ error: 'Failed to log set' }, { status: 500 });
-  }
-
-  // Insert set (or update if same set_number resubmitted — supports edit).
-  const { data: setRow, error: setErr } = await supa
-    .from('sets')
-    .upsert(
-      {
-        exercise_log_id: log.id,
-        set_number: parsed.data.setNumber,
-        weight: parsed.data.weight ?? null,
-        unit: parsed.data.unit ?? null,
-        reps: parsed.data.reps ?? null,
-        rir: parsed.data.rir ?? null,
-        cardio_minutes: parsed.data.cardioMinutes ?? null,
-        video_url: parsed.data.videoPath ?? null,
-        notes: parsed.data.notes ?? null,
-      },
-      { onConflict: 'exercise_log_id,set_number' }
-    )
-    .select('id, weight, unit, reps')
-    .single();
-
-  if (setErr || !setRow) {
+  if (error) {
+    logger.error('set.rpc_failed', error, { workoutId: id });
     return NextResponse.json({ error: 'Failed to save set' }, { status: 500 });
   }
 
-  // Update best_efforts only for non-cardio sets.
-  let prMessage: string | null = null;
-  if (!ex.is_cardio) {
-    const result = await upsertBestEffortFromSet(
-      ctx.user.id,
-      ex.name_key,
-      setRow.weight,
-      setRow.unit,
-      setRow.reps,
-      setRow.id
+  const result = data as {
+    error?: 'unauthorized' | 'exercise_mismatch' | 'invalid_video_path';
+    ok?: true;
+    set_id?: string;
+    log_id?: string;
+    pr?: { prev: { weight: number; unit: string | null; reps: number } | null } | null;
+  };
+
+  if (result?.error === 'unauthorized') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (result?.error === 'exercise_mismatch') {
+    return NextResponse.json(
+      { error: 'Exercise not in this workout' },
+      { status: 400 },
     );
-    if (result.updated) prMessage = result.prMessage;
+  }
+  if (result?.error === 'invalid_video_path') {
+    logger.warn('set.video_path_rejected', { workoutId: id });
+    return NextResponse.json({ error: 'Invalid video path' }, { status: 400 });
+  }
+  if (!result?.ok) {
+    return NextResponse.json({ error: 'Failed to save set' }, { status: 500 });
+  }
+
+  let prMessage: string | null = null;
+  if (result.pr && parsed.data.weight != null && parsed.data.reps != null) {
+    const prev: BestSnapshot | null = result.pr.prev
+      ? {
+          weight: Number(result.pr.prev.weight),
+          unit: result.pr.prev.unit,
+          reps: result.pr.prev.reps,
+        }
+      : null;
+    prMessage = prDeltaMessage(prev, {
+      weight: parsed.data.weight,
+      unit: parsed.data.unit ?? null,
+      reps: parsed.data.reps,
+    });
   }
 
   return NextResponse.json({
     ok: true,
-    setId: setRow.id,
-    logId: log.id,
+    setId: result.set_id,
+    logId: result.log_id,
     pr: prMessage ? { message: prMessage } : null,
   });
 }

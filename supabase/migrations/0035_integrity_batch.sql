@@ -43,9 +43,12 @@ alter table days add constraint days_program_id_day_index_key
 alter table exercises add constraint exercises_name_key_format
   check (name_key ~ '^d[0-9]+::');
 
--- NOT VALID: 5 historical outlier rows are tolerated (flagged for manual
--- cleanup); new writes are bounded. Run VALIDATE CONSTRAINT after cleanup.
+-- NOT VALID: one historical outlier row (2706kg fat-finger) is tolerated
+-- and flagged for manual cleanup; new writes are bounded. Negative weights
+-- are ALLOWED — the logger's ± toggle supports counterweighted machines
+-- (see toggleWeightSign in lib/weight.ts). Run VALIDATE CONSTRAINT after
+-- cleanup.
 alter table sets add constraint sets_weight_sane
-  check (weight is null or (weight >= 0 and weight <= 1500)) not valid;
+  check (weight is null or (weight >= -500 and weight <= 1500)) not valid;
 alter table sets add constraint sets_reps_sane
   check (reps is null or (reps >= 0 and reps <= 200)) not valid;
