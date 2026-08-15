@@ -54,6 +54,7 @@ import {
   PAIN_INCIDENT_WINDOW_DAYS,
   PAIN_LOAD_REDUCTION_FIRST,
   PLATEAU_HYPERTROPHY_REP_MIN,
+  ANALYSIS_LOOKBACK_WEEKS,
   PLATEAU_STRENGTH_REP_MAX,
   RIR_EFFORT_GAP_THRESHOLD,
   SKIPPED_ARCHIVE_WEEKS,
@@ -236,12 +237,22 @@ export async function buildSuggestionsByClient(
     programByClient.set(p.client_id, p);
   }
 
-  // Fetch every completed workout for these clients (id + when + day_id).
+  // Fetch completed workouts for these clients (id + when + day_id),
+  // bounded to the analysis lookback. Unbounded, this scanned lifetime
+  // history on every call and grew forever; every downstream window
+  // (plateau, adherence, pain-recurrence, split rotation) fits inside
+  // ANALYSIS_LOOKBACK_WEEKS. Days last trained before the bound fall out
+  // of the skipped-day analysis (they read as "never trained"), which is
+  // fine — the archive suggestion fires at SKIPPED_ARCHIVE_WEEKS anyway.
+  const lookbackStart = new Date(
+    at.getTime() - ANALYSIS_LOOKBACK_WEEKS * 7 * 24 * 60 * 60_000,
+  ).toISOString();
   const { data: workouts } = await supa
     .from('workouts')
     .select('id, client_id, day_id, started_at, completed_at, week_start')
     .in('client_id', clientIds)
     .not('completed_at', 'is', null)
+    .gte('started_at', lookbackStart)
     .order('started_at', { ascending: true });
 
   const completedWorkoutsByClient = new Map<

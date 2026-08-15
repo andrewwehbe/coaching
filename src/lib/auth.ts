@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createHmac, randomBytes } from 'node:crypto';
+import { cache } from 'react';
 import { cookies, headers } from 'next/headers';
 import bcrypt from 'bcryptjs';
 
@@ -58,10 +59,15 @@ export function pinHmac(pin: string): string | null {
  */
 export async function clientIp(): Promise<string> {
   const h = await headers();
+  // Platform-verified headers first: Vercel sets x-real-ip /
+  // x-vercel-forwarded-for itself, so they can't be spoofed by the caller.
+  // The first x-forwarded-for element is attacker-controlled behind some
+  // proxies, so it's only the last resort (dev / non-Vercel hosts).
   return (
-    h.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     h.get('x-real-ip') ||
+    h.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() ||
     h.get('cf-connecting-ip') ||
+    h.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     '0.0.0.0'
   );
 }
@@ -274,11 +280,62 @@ export async function issueSession(user: SessionUser, userAgent: string | null):
   return token;
 }
 
-export async function readSession(): Promise<SessionUser | null> {
+/**
+ * Resolves the session cookie to a user. Wrapped in React.cache so the
+ * layout and page of one navigation share a single lookup instead of each
+ * paying for their own. The lookup itself is one round trip: the
+ * get_session_user RPC (0034) validates the token, fetches the user row,
+ * and does a throttled last_used touch inside one call. Falls back to the
+ * legacy two-query path if the function isn't deployed (e.g. a local DB
+ * behind on migrations).
+ */
+export const readSession = cache(async (): Promise<SessionUser | null> => {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
+  const h = await headers();
+  const ip =
+    h.get('x-real-ip') ||
+    h.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() ||
+    h.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    null;
+  const ua = h.get('user-agent') ?? null;
+
+  const supa = db();
+  const { data, error } = await supa.rpc('get_session_user', {
+    p_token: token,
+    p_ip: ip,
+    p_ua: ua,
+  });
+
+  if (error) return readSessionLegacy(token, ip, ua);
+  if (!data) return null;
+
+  const u = data as {
+    type: 'coach' | 'client';
+    id: string;
+    name: string;
+    greeting_name?: string | null;
+    active?: boolean;
+  };
+  if (u.type === 'coach') {
+    return { type: 'coach', id: u.id, name: u.name };
+  }
+  return {
+    type: 'client',
+    id: u.id,
+    name: u.name,
+    greetingName: u.greeting_name ?? u.name,
+    active: u.active ?? false,
+  };
+});
+
+async function readSessionLegacy(
+  token: string,
+  ip: string | null,
+  ua: string | null,
+): Promise<SessionUser | null> {
   const supa = db();
   const { data: session } = await supa
     .from('sessions')
@@ -290,21 +347,16 @@ export async function readSession(): Promise<SessionUser | null> {
   if (new Date(session.expires_at) < new Date()) return null;
 
   // Touch last_used_at + bind IP/UA for the /settings session list.
-  // Best-effort, no await — a failed touch must not break the request.
-  const h = await headers();
-  const ip =
-    h.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    h.get('x-real-ip') ||
-    null;
-  const ua = h.get('user-agent') ?? null;
-  void supa
+  // Best-effort — a failed touch must not break the request.
+  supa
     .from('sessions')
     .update({
       last_used_at: new Date().toISOString(),
       last_used_ip: ip,
       last_used_ua: ua,
     })
-    .eq('id', token);
+    .eq('id', token)
+    .then(undefined, () => {});
 
   if (session.user_type === 'coach') {
     const { data: c } = await supa

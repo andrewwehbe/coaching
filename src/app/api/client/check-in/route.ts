@@ -52,6 +52,14 @@ export async function POST(req: Request) {
     );
   }
 
+  // Storage paths are namespaced per user by /api/client/check-in/photo-url
+  // ({clientId}/{ts}-{rand}-{filename}). Reject any path outside the
+  // caller's own prefix — otherwise a client could attach another client's
+  // object to their check-in and have coach views sign it.
+  if (photos?.some((p) => !p.storagePath.startsWith(`${user.id}/`))) {
+    return NextResponse.json({ error: 'Invalid photo path' }, { status: 400 });
+  }
+
   const supa = db();
 
   // Upsert by (client_id, date) — one check-in per day per client.

@@ -107,26 +107,38 @@ export default async function ClientDetailPage(props: { params: Params }) {
   ]);
   if (!client) notFound();
 
-  const effort = await loadEffortWindow(id);
-  const recResult = await loadRecommendation(id);
+  // Sign photo paths so we can render private-bucket assets.
+  const photoPaths: string[] = [];
+  for (const c of checkIns ?? []) {
+    const ph = (c.check_in_photos as Array<{ storage_url: string }>) ?? [];
+    for (const p of ph) photoPaths.push(p.storage_url);
+  }
 
-  // Recent recommendation decisions — audit trail surfaced under the card.
-  const { data: recentDecisions } = await supa
-    .from('recommendations')
-    .select('id, created_at, rec_type, title, decision, decision_note')
-    .eq('client_id', id)
-    .order('created_at', { ascending: false })
-    .limit(8);
-
-  const { data: days } = program
-    ? await supa
-        .from('days')
-        .select(
-          'id, day_index, label, exercises(id, position, name, prescription_raw, coach_note, archived_at, muscle_group)',
-        )
-        .eq('program_id', program.id)
-        .order('day_index')
-    : { data: [] as never };
+  // Effort window, recommendation, decisions audit trail, program days and
+  // photo signing are mutually independent — one barrier instead of five
+  // sequential awaits (this page is the coach's hottest route).
+  const [effort, recResult, { data: recentDecisions }, { data: days }, signed] =
+    await Promise.all([
+      loadEffortWindow(id),
+      loadRecommendation(id),
+      // Recent recommendation decisions — audit trail surfaced under the card.
+      supa
+        .from('recommendations')
+        .select('id, created_at, rec_type, title, decision, decision_note')
+        .eq('client_id', id)
+        .order('created_at', { ascending: false })
+        .limit(8),
+      program
+        ? supa
+            .from('days')
+            .select(
+              'id, day_index, label, exercises(id, position, name, prescription_raw, coach_note, archived_at, muscle_group)',
+            )
+            .eq('program_id', program.id)
+            .order('day_index')
+        : Promise.resolve({ data: [] as never }),
+      signMediaUrls(PHOTO_BUCKET, photoPaths),
+    ]);
 
   const currentWeekIsDeload = (thisWeek ?? []).some((w) => w.is_deload);
 
@@ -141,13 +153,6 @@ export default async function ClientDetailPage(props: { params: Params }) {
       : null,
   );
 
-  // Sign photo paths so we can render private-bucket assets.
-  const photoPaths: string[] = [];
-  for (const c of checkIns ?? []) {
-    const ph = (c.check_in_photos as Array<{ storage_url: string }>) ?? [];
-    for (const p of ph) photoPaths.push(p.storage_url);
-  }
-  const signed = await signMediaUrls(PHOTO_BUCKET, photoPaths);
   const signedByPath = new Map<string, string | null>();
   photoPaths.forEach((p, i) => signedByPath.set(p, signed[i]));
 

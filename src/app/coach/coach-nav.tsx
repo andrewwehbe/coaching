@@ -17,11 +17,13 @@ export function CoachNav() {
     <nav className="flex items-stretch gap-1 overflow-x-auto no-scrollbar -mx-1 pt-1.5">
       {TABS.map((t) => {
         const active = t.match(pathname);
+        // Prefetch stays on: pages are dynamic, so it only preloads the
+        // static shell + loading.tsx — data stays request-fresh while
+        // taps paint instantly.
         return (
           <Link
             key={t.href}
             href={t.href}
-            prefetch={false}
             className={`group relative shrink-0 px-3 sm:px-4 pt-1.5 pb-2.5 text-[11px] uppercase tracking-[0.18em] font-medium transition-colors ${
               active ? 'text-text' : 'text-faint hover:text-text'
             }`}

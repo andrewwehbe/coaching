@@ -238,6 +238,18 @@ export const PAIN_LOAD_REDUCTION_FIRST = 0.15;
  */
 export const SKIPPED_ARCHIVE_WEEKS = 4;
 
+/**
+ * How far back the suggestions/analysis engines fetch workout history.
+ * Every analysis window above fits comfortably inside it (largest is
+ * SPLIT_ROTATION_CADENCE_WEEKS = 14; plateau ladder ≤ 4; adherence 2).
+ * Without a bound these fetches scan a client's entire lifetime history
+ * on every coach page view and grow forever. 26 weeks = two full
+ * macro-blocks of slack over the widest window. Pre-app history stays
+ * available through historical_exposures, which is imported once and
+ * already bounded.
+ */
+export const ANALYSIS_LOOKBACK_WEEKS = 26;
+
 // ---------- Stage 3: dynamic RIR prescription ----------
 /**
  * Per-goal RIR target bands. Hypertrophy declines past ~5 RIR

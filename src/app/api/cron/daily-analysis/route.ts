@@ -27,6 +27,7 @@ import { verifyCronSecret } from '@/lib/cron-auth';
 import {
   REMINDER_DEDUP_HOURS,
   ADHERENCE_LOOKBACK_WEEKS,
+  ANALYSIS_LOOKBACK_WEEKS,
   ANOMALY_DEDUP_DAYS,
 } from '@/lib/config';
 import { log } from '@/lib/log';
@@ -304,10 +305,18 @@ async function runReminders(args: {
 async function analyzeClient(clientId: string) {
   const supa = db();
 
+  // Bounded to the shared analysis lookback (same window suggestions.ts
+  // uses). The plateau classifier only reads recent weekly exposures;
+  // unbounded, this cron re-scanned every client's lifetime history
+  // nightly and its runtime grew without limit.
+  const lookbackStart = new Date(
+    Date.now() - ANALYSIS_LOOKBACK_WEEKS * 7 * 24 * 60 * 60_000,
+  ).toISOString();
   const { data: workouts } = await supa
     .from('workouts')
     .select('id,started_at')
-    .eq('client_id', clientId);
+    .eq('client_id', clientId)
+    .gte('started_at', lookbackStart);
 
   const workoutIds = (workouts ?? []).map((w) => w.id);
   if (workoutIds.length === 0) {

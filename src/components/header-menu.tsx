@@ -144,7 +144,6 @@ export function HeaderMenu({
                 role="menuitem"
                 onClick={() => setOpen(false)}
                 className="block px-3 py-2 text-sm text-text hover:bg-surface-2 transition-colors"
-                prefetch={false}
               >
                 {l.label}
               </Link>

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { startOfWeek, formatISO } from 'date-fns';
+import { startOfWeek, formatISO, subDays } from 'date-fns';
 
 import { db } from './supabase';
 import { buildSuggestionsByClient } from './suggestions';
@@ -77,10 +77,13 @@ export async function buildStatusOverview(at: Date = new Date()): Promise<Status
       .in('client_id', ids)
       .eq('week_start', weekStartIso)
       .not('completed_at', 'is', null),
+    // Bounded to 90 days: the "last active" caption is hidden when null,
+    // so clients dormant longer than that just lose the caption.
     supa
       .from('workouts')
       .select('client_id, started_at')
       .in('client_id', ids)
+      .gte('started_at', subDays(at, 90).toISOString())
       .order('started_at', { ascending: false }),
     buildSuggestionsByClient(ids, at),
   ]);

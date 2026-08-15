@@ -63,10 +63,14 @@ export async function listClientSummaries(): Promise<ClientSummary[]> {
       .select('client_id, day_id, completed_at, started_at')
       .in('client_id', ids)
       .gte('week_start', weekStartIso),
+    // Bounded to 90 days: status only distinguishes <7d/<14d, and the
+    // "last active" caption is hidden when null. Unbounded, this scanned
+    // every workout ever logged on each dashboard view.
     supa
       .from('workouts')
       .select('client_id, started_at, completed_at')
       .in('client_id', ids)
+      .gte('started_at', subDays(now, 90).toISOString())
       .order('started_at', { ascending: false }),
     supa
       .from('alerts')

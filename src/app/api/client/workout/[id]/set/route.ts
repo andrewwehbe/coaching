@@ -36,6 +36,21 @@ export async function POST(req: Request, props: { params: Params }) {
     return NextResponse.json({ error: 'Invalid set payload' }, { status: 400 });
   }
 
+  // Storage paths are namespaced per user by /api/client/upload-url
+  // ({clientId}/{ts}-{rand}-{filename}). Reject any path outside the
+  // caller's own prefix — otherwise a client could attach another
+  // client's object to their set and have coach views sign it.
+  if (
+    parsed.data.videoPath &&
+    !parsed.data.videoPath.startsWith(`${ctx.user.id}/`)
+  ) {
+    logger.warn('set.video_path_rejected', {
+      workoutId: id,
+      clientId: ctx.user.id,
+    });
+    return NextResponse.json({ error: 'Invalid video path' }, { status: 400 });
+  }
+
   const supa = db();
 
   // Verify the exercise belongs to this workout's day.
