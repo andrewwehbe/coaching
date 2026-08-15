@@ -5,6 +5,7 @@ import { startOfWeek, formatISO, differenceInCalendarWeeks } from 'date-fns';
 import { db } from './supabase';
 import {
   buildProgressionSeries,
+  pickTopPRsByClient,
   synthesizeHistoricalTimestamps,
   type HistoricalInput,
   type SessionInput,
@@ -174,25 +175,9 @@ export async function buildSuggestionsByClient(
       .not('source_set_id', 'is', null),
   ]);
 
-  // Tier-1 PR per client — pick the highest e1RM PR. exercise_name_key has
-  // the day-prefix ("d1::squat"); strip for display.
-  const topPRByClient = new Map<string, { exerciseName: string; weight: number; unit: 'kg' | 'lb'; reps: number }>();
-  for (const r of weekPRRows ?? []) {
-    if (r.best_weight == null || r.best_reps == null) continue;
-    const weight = Number(r.best_weight);
-    const reps = r.best_reps;
-    const e1RM = weight * (1 + reps / 30);
-    const prior = topPRByClient.get(r.client_id);
-    const priorE1RM = prior ? prior.weight * (1 + prior.reps / 30) : -Infinity;
-    if (e1RM <= priorE1RM) continue;
-    const display = (r.exercise_name_key as string).replace(/^d\d+::/, '');
-    topPRByClient.set(r.client_id, {
-      exerciseName: display.charAt(0).toUpperCase() + display.slice(1),
-      weight,
-      unit: (r.best_unit as 'kg' | 'lb' | null) ?? 'kg',
-      reps,
-    });
-  }
+  // Tier-1 PR per client — highest e1RM PR, kg-normalized (shared helper;
+  // the old inline compare on raw weight let a 100 lb PR beat a 60 kg one).
+  const topPRByClient = pickTopPRsByClient(weekPRRows ?? []);
 
   const trainingAgeByClient = new Map<string, TrainingAge | null>();
   const weeklyDayTargetByClient = new Map<string, number>();

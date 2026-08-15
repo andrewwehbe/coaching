@@ -76,6 +76,53 @@ export function epleyE1RM(weight: number, reps: number): number {
   return weight * (1 + reps / 30);
 }
 
+/** A best_efforts row as fetched for weekly-note PR celebrations. */
+export type BestEffortPRRow = {
+  client_id: string;
+  exercise_name_key: string;
+  best_weight: number | string | null;
+  best_unit: string | null;
+  best_reps: number | null;
+};
+
+export type TopPR = {
+  exerciseName: string;
+  weight: number;
+  unit: 'kg' | 'lb';
+  reps: number;
+};
+
+/**
+ * Pick each client's single best PR of the week by Epley e1RM. The
+ * comparison is done in kg — this used to be inlined (twice) comparing
+ * raw weights, so a 100 lb PR would beat a 60 kg PR for mixed-unit
+ * clients. Display name strips the "dN::" key prefix and capitalises,
+ * matching how the weekly note reads.
+ */
+export function pickTopPRsByClient(
+  rows: ReadonlyArray<BestEffortPRRow>,
+): Map<string, TopPR> {
+  const out = new Map<string, TopPR>();
+  const bestE1RMKg = new Map<string, number>();
+  for (const r of rows) {
+    if (r.best_weight == null || r.best_reps == null) continue;
+    const weight = Number(r.best_weight);
+    const reps = r.best_reps;
+    const weightKg = r.best_unit === 'lb' ? weight * LB_TO_KG : weight;
+    const e1RMKg = epleyE1RM(weightKg, reps);
+    if (e1RMKg <= (bestE1RMKg.get(r.client_id) ?? -Infinity)) continue;
+    bestE1RMKg.set(r.client_id, e1RMKg);
+    const display = r.exercise_name_key.replace(/^d\d+::/, '');
+    out.set(r.client_id, {
+      exerciseName: display.charAt(0).toUpperCase() + display.slice(1),
+      weight,
+      unit: r.best_unit === 'lb' ? 'lb' : 'kg',
+      reps,
+    });
+  }
+  return out;
+}
+
 /** Whether reps fall in the band where Epley's e1RM is trustworthy. */
 export function isHighConfidenceE1RM(reps: number): boolean {
   return reps >= 1 && reps <= E1RM_MAX_REPS_FOR_CONFIDENCE;

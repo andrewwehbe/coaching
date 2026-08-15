@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
 import { readSession } from '@/lib/auth';
@@ -5,6 +6,7 @@ import { db } from '@/lib/supabase';
 import { parseSheet } from '@/lib/sheet-parser';
 import { sendPushToClient } from '@/lib/push';
 import { recordProgramRevision } from '@/lib/program-revision';
+import { log } from '@/lib/log';
 
 type Params = Promise<{ id: string }>;
 
@@ -16,15 +18,6 @@ export async function POST(req: Request, ctx: { params: Params }) {
 
   const { id: clientId } = await ctx.params;
   const supa = db();
-
-  const { data: client } = await supa
-    .from('clients')
-    .select('id')
-    .eq('id', clientId)
-    .maybeSingle();
-  if (!client) {
-    return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-  }
 
   const form = await req.formData().catch(() => null);
   const file = form?.get('file');
@@ -41,48 +34,15 @@ export async function POST(req: Request, ctx: { params: Params }) {
     );
   }
 
-  await supa
-    .from('programs')
-    .update({ active: false })
-    .eq('client_id', clientId)
-    .eq('active', true);
-
-  const { data: program, error: progErr } = await supa
-    .from('programs')
-    .insert({
-      client_id: clientId,
-      source_filename: file.name,
-      active: true,
-    })
-    .select('id')
-    .single();
-  if (progErr || !program) {
-    return NextResponse.json(
-      { error: progErr?.message ?? 'Failed to create program' },
-      { status: 500 }
-    );
-  }
-
-  for (const [i, day] of result.program.days.entries()) {
-    const { data: dayRow, error: dayErr } = await supa
-      .from('days')
-      .insert({
-        program_id: program.id,
-        day_index: i + 1,
-        label: day.label,
-      })
-      .select('id')
-      .single();
-    if (dayErr || !dayRow) {
-      return NextResponse.json(
-        { error: dayErr?.message ?? 'Failed to insert day' },
-        { status: 500 }
-      );
-    }
-
-    const exerciseRows = day.exercises.map((ex, j) => ({
-      day_id: dayRow.id,
-      position: j + 1,
+  // Deactivate-old + insert program/days/exercises runs inside the
+  // commit_program Postgres function (0039) as ONE transaction. The old
+  // sequential version deactivated the previous program before inserting
+  // the new one, so a mid-sequence failure left the client with no active
+  // program at all — the enabler of the historical duplicate-days mess.
+  const programId = randomUUID();
+  const daysPayload = result.program.days.map((day) => ({
+    label: day.label,
+    exercises: day.exercises.map((ex) => ({
       name: ex.name,
       name_key: ex.name_key,
       prescription_raw: ex.prescription_raw,
@@ -92,19 +52,32 @@ export async function POST(req: Request, ctx: { params: Params }) {
       rir_target: ex.rir_target,
       is_cardio: ex.is_cardio,
       cardio_type: ex.cardio_type,
-    }));
-    if (exerciseRows.length > 0) {
-      const { error: exErr } = await supa.from('exercises').insert(exerciseRows);
-      if (exErr) {
-        return NextResponse.json({ error: exErr.message }, { status: 500 });
-      }
-    }
+    })),
+  }));
+
+  const { data, error } = await supa.rpc('commit_program', {
+    p_client_id: clientId,
+    p_program_id: programId,
+    p_source_filename: file.name,
+    p_days: daysPayload,
+  });
+  if (error) {
+    log.error('program.commit.rpc_failed', error, { clientId });
+    return NextResponse.json({ error: 'Failed to save program' }, { status: 500 });
+  }
+  const rpcResult = data as { ok?: true; error?: string } | null;
+  if (rpcResult?.error === 'client_not_found') {
+    return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+  }
+  if (!rpcResult?.ok) {
+    log.error('program.commit.rpc_result', rpcResult?.error ?? 'unknown', { clientId });
+    return NextResponse.json({ error: 'Failed to save program' }, { status: 500 });
   }
 
   // Snapshot the freshly-uploaded program as revision 1. Best-effort —
   // a snapshot failure is logged but does not fail the upload.
   await recordProgramRevision({
-    programId: program.id,
+    programId,
     editedBy: user.id,
     reason: 'sheet_upload',
   });
@@ -114,7 +87,7 @@ export async function POST(req: Request, ctx: { params: Params }) {
     actor_id: user.id,
     action: 'program.upload',
     target_type: 'program',
-    target_id: program.id,
+    target_id: programId,
     details: {
       client_id: clientId,
       filename: file.name,
@@ -132,5 +105,5 @@ export async function POST(req: Request, ctx: { params: Params }) {
     url: '/today',
   }).catch(() => {});
 
-  return NextResponse.json({ ok: true, program_id: program.id });
+  return NextResponse.json({ ok: true, program_id: programId });
 }

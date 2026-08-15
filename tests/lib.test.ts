@@ -13,6 +13,7 @@ import {
   epleyE1RM,
   isHighConfidenceE1RM,
   mdcForSession,
+  pickTopPRsByClient,
   synthesizeHistoricalTimestamps,
   type HistoricalInput,
   type SessionInput,
@@ -4628,6 +4629,41 @@ check('toggleWeightSign: empty -> minus', toggleWeightSign('') === '-');
 check('toggleWeightSign: lone minus -> empty', toggleWeightSign('-') === '');
 check('toggleWeightSign: decimal preserved', toggleWeightSign('12.5') === '-12.5');
 check('toggleWeightSign: trims whitespace', toggleWeightSign(' 20 ') === '-20');
+
+// ---------- pickTopPRsByClient (kg-normalized weekly top PR) ----------
+
+{
+  const prs = pickTopPRsByClient([
+    // 100 lb ≈ 45.4 kg — must LOSE to 60 kg at equal reps. The old inline
+    // compare ranked raw numbers and would have picked the lb row.
+    { client_id: 'c1', exercise_name_key: 'd1::bench press', best_weight: 100, best_unit: 'lb', best_reps: 8 },
+    { client_id: 'c1', exercise_name_key: 'd2::squat', best_weight: 60, best_unit: 'kg', best_reps: 8 },
+  ]);
+  check('topPR: kg beats numerically-larger lb', prs.get('c1')?.exerciseName === 'Squat');
+  check('topPR: winner keeps its own unit', prs.get('c1')?.unit === 'kg' && prs.get('c1')?.weight === 60);
+}
+
+{
+  const prs = pickTopPRsByClient([
+    // 300 lb ≈ 136 kg — must BEAT 100 kg.
+    { client_id: 'c1', exercise_name_key: 'd1::deadlift', best_weight: 300, best_unit: 'lb', best_reps: 5 },
+    { client_id: 'c1', exercise_name_key: 'd1::squat', best_weight: 100, best_unit: 'kg', best_reps: 5 },
+    // Second client tracked independently; null weight rows skipped.
+    { client_id: 'c2', exercise_name_key: 'd1::row', best_weight: null, best_unit: 'kg', best_reps: 10 },
+    { client_id: 'c2', exercise_name_key: 'd3::hip thrust', best_weight: 80, best_unit: 'kg', best_reps: 10 },
+  ]);
+  check('topPR: lb wins when actually heavier', prs.get('c1')?.exerciseName === 'Deadlift' && prs.get('c1')?.unit === 'lb');
+  check('topPR: per-client isolation + null skip', prs.get('c2')?.exerciseName === 'Hip thrust');
+  check('topPR: display strips dN:: prefix and capitalises', prs.get('c2')?.exerciseName === 'Hip thrust');
+}
+
+check('topPR: empty input -> empty map', pickTopPRsByClient([]).size === 0);
+check(
+  'topPR: numeric-string weights coerced',
+  pickTopPRsByClient([
+    { client_id: 'c1', exercise_name_key: 'd1::press', best_weight: '42.5', best_unit: 'kg', best_reps: 6 },
+  ]).get('c1')?.weight === 42.5,
+);
 
 // ---------- summary ----------
 

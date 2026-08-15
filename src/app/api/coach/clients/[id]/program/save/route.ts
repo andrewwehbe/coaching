@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
@@ -46,6 +47,14 @@ const Body = z.object({
     .min(1),
 });
 
+/**
+ * Program edit. This route PLANS the change (validation, id issuance,
+ * name_key collation, best-effort-migration list, archive list) and the
+ * save_program_edit Postgres function (0039) EXECUTES it in one
+ * transaction — the old version was a loop of single-row writes where a
+ * mid-loop error half-wrote the program, and direct position updates
+ * could trip the (day_id, position) partial unique index on reorders.
+ */
 export async function POST(req: Request, ctx: { params: Params }) {
   const user = await readSession();
   if (!user || user.type !== 'coach') {
@@ -100,7 +109,6 @@ export async function POST(req: Request, ctx: { params: Params }) {
   const existingDayById = new Map<string, NonNullable<typeof existingDays>[number]>();
   for (const d of existingDays ?? []) existingDayById.set(d.id, d);
 
-  const incomingDayIds = new Set<string>();
   const incomingExerciseIds = new Set<string>();
 
   // Mirrors payload.days shape and is returned to the client so it can merge
@@ -115,42 +123,46 @@ export async function POST(req: Request, ctx: { params: Params }) {
   // client sees "Log first set" on Day 4 even after logging Day 2.
   const nameToFirstKey = new Map<string, string>();
 
+  // Best-effort key migrations to run AFTER the transaction commits.
+  // migrateBestEffortKey copies (never deletes), so it's safe post-commit
+  // and a failure there can't corrupt the program itself.
+  const keyMigrations: Array<{ oldKey: string; newKey: string }> = [];
+
+  type DayOp = {
+    id: string;
+    is_new: boolean;
+    day_index: number;
+    label: string;
+    exercises: Array<{
+      id: string;
+      is_new: boolean;
+      position: number;
+      name: string;
+      name_key: string;
+      prescription_raw: string;
+      prescribed_sets: number | null;
+      rep_min: number | null;
+      rep_max: number | null;
+      rir_target: string | null;
+      is_cardio: boolean;
+      coach_note: string | null;
+      muscle_group: string | null;
+    }>;
+  };
+  const daysPayload: DayOp[] = [];
+
   for (const [di, day] of payload.days.entries()) {
     const dayIndex = di + 1;
-    let dayId = day.id;
+    const isNewDay = !(day.id && existingDayById.has(day.id));
+    const dayId = isNewDay ? randomUUID() : day.id!;
 
-    if (dayId && existingDayById.has(dayId)) {
-      incomingDayIds.add(dayId);
-      const existing = existingDayById.get(dayId)!;
-      if (existing.label !== day.label || existing.day_index !== dayIndex) {
-        const { error } = await supa
-          .from('days')
-          .update({ label: day.label, day_index: dayIndex })
-          .eq('id', dayId);
-        if (error) {
-          log.error('program.save.day_update', error, { dayId, clientId });
-          return NextResponse.json({ error: 'Failed to update day' }, { status: 500 });
-        }
-      }
-    } else {
-      const { data: row, error } = await supa
-        .from('days')
-        .insert({ program_id: program.id, day_index: dayIndex, label: day.label })
-        .select('id')
-        .single();
-      if (error || !row) {
-        log.error('program.save.day_insert', error, { clientId, dayIndex });
-        return NextResponse.json({ error: 'Failed to create day' }, { status: 500 });
-      }
-      dayId = row.id;
-    }
-
-    const existingExByName = new Map<string, { id: string; name: string; name_key: string }>();
-    for (const ex of existingDayById.get(dayId!)?.exercises ?? []) {
+    const existingExById = new Map<string, { id: string; name_key: string }>();
+    for (const ex of existingDayById.get(dayId)?.exercises ?? []) {
       if (ex.archived_at) continue;
-      existingExByName.set(ex.id, { id: ex.id, name: ex.name, name_key: ex.name_key });
+      existingExById.set(ex.id, { id: ex.id, name_key: ex.name_key });
     }
 
+    const exOps: DayOp['exercises'] = [];
     const savedExercises: Array<{ id: string }> = [];
 
     for (const [ei, ex] of day.exercises.entries()) {
@@ -163,80 +175,55 @@ export async function POST(req: Request, ctx: { params: Params }) {
         nameToFirstKey.set(dedupeKey, newNameKey);
       }
 
-      if (ex.id && existingExByName.has(ex.id)) {
-        incomingExerciseIds.add(ex.id);
-        const oldNameKey = existingExByName.get(ex.id)!.name_key;
+      const isNewEx = !(ex.id && existingExById.has(ex.id));
+      const exId = isNewEx ? randomUUID() : ex.id!;
+      if (!isNewEx) {
+        incomingExerciseIds.add(exId);
         // Regenerate name_key whenever the name changes; that's how a "swap"
-        // resets the cue to "Log first set". The migrate call below copies
+        // resets the cue to "Log first set". The post-commit migrate copies
         // (without deleting) the existing best_efforts row to the new key so
         // a rename doesn't visually erase the client's PR.
-        const { error } = await supa
-          .from('exercises')
-          .update({
-            position,
-            name: ex.name,
-            name_key: newNameKey,
-            prescription_raw: ex.prescription_raw,
-            prescribed_sets: rx.sets,
-            rep_min: rx.rep_min,
-            rep_max: rx.rep_max,
-            rir_target: rx.rir,
-            is_cardio: rx.is_cardio,
-            coach_note: ex.coach_note?.trim() || null,
-            muscle_group: ex.muscle_group ?? null,
-            archived_at: null,
-          })
-          .eq('id', ex.id);
-        if (error) {
-          log.error('program.save.ex_update', error, { exerciseId: ex.id, clientId });
-          return NextResponse.json({ error: 'Failed to update exercise' }, { status: 500 });
-        }
+        const oldNameKey = existingExById.get(exId)!.name_key;
         if (oldNameKey !== newNameKey) {
-          await migrateBestEffortKey(clientId, oldNameKey, newNameKey);
+          keyMigrations.push({ oldKey: oldNameKey, newKey: newNameKey });
         }
-        savedExercises.push({ id: ex.id });
-      } else {
-        const { data: row, error } = await supa
-          .from('exercises')
-          .insert({
-            day_id: dayId!,
-            position,
-            name: ex.name,
-            name_key: newNameKey,
-            prescription_raw: ex.prescription_raw,
-            prescribed_sets: rx.sets,
-            rep_min: rx.rep_min,
-            rep_max: rx.rep_max,
-            rir_target: rx.rir,
-            is_cardio: rx.is_cardio,
-            coach_note: ex.coach_note?.trim() || null,
-            muscle_group: ex.muscle_group ?? null,
-          })
-          .select('id')
-          .single();
-        if (error || !row) {
-          log.error('program.save.ex_insert', error, { clientId, dayId });
-          return NextResponse.json({ error: 'Failed to create exercise' }, { status: 500 });
-        }
-        incomingExerciseIds.add(row.id);
-        savedExercises.push({ id: row.id });
       }
+
+      exOps.push({
+        id: exId,
+        is_new: isNewEx,
+        position,
+        name: ex.name,
+        name_key: newNameKey,
+        prescription_raw: ex.prescription_raw,
+        prescribed_sets: rx.sets,
+        rep_min: rx.rep_min,
+        rep_max: rx.rep_max,
+        rir_target: rx.rir,
+        is_cardio: rx.is_cardio,
+        coach_note: ex.coach_note?.trim() || null,
+        muscle_group: ex.muscle_group ?? null,
+      });
+      savedExercises.push({ id: exId });
     }
 
-    savedDays.push({ id: dayId!, exercises: savedExercises });
+    daysPayload.push({
+      id: dayId,
+      is_new: isNewDay,
+      day_index: dayIndex,
+      label: day.label,
+      exercises: exOps,
+    });
+    savedDays.push({ id: dayId, exercises: savedExercises });
   }
 
-  // Archive (soft-delete) exercises that were removed. Keep the row so old
-  // exercise_logs stay queryable; they just stop showing up in the program.
+  // Exercises that were removed get archived (soft-delete) inside the same
+  // transaction. Rows stay so old exercise_logs remain queryable.
+  const archiveIds: string[] = [];
   for (const day of existingDays ?? []) {
     for (const ex of day.exercises ?? []) {
       if (ex.archived_at) continue;
-      if (!incomingExerciseIds.has(ex.id)) {
-        await supa
-          .from('exercises')
-          .update({ archived_at: new Date().toISOString() })
-          .eq('id', ex.id);
-      }
+      if (!incomingExerciseIds.has(ex.id)) archiveIds.push(ex.id);
     }
   }
 
@@ -244,12 +231,31 @@ export async function POST(req: Request, ctx: { params: Params }) {
   // so removing one would orphan history. Days only ever get added or renamed.
   // (To "delete" a day, the coach can re-upload the program from scratch.)
 
-  // Bump last_edited_at so the coach roster's "edited Xw ago" counter
-  // reflects in-place edits. Original uploaded_at is preserved.
-  await supa
-    .from('programs')
-    .update({ last_edited_at: new Date().toISOString() })
-    .eq('id', program.id);
+  const { data, error } = await supa.rpc('save_program_edit', {
+    p_client_id: clientId,
+    p_program_id: program.id,
+    p_days: daysPayload,
+    p_archive_ids: archiveIds,
+  });
+  if (error) {
+    log.error('program.save.rpc_failed', error, { clientId, programId: program.id });
+    return NextResponse.json({ error: 'Failed to save program' }, { status: 500 });
+  }
+  const rpcResult = data as { ok?: true; error?: string } | null;
+  if (rpcResult?.error === 'program_not_found') {
+    return NextResponse.json({ error: 'No active program for this client' }, { status: 404 });
+  }
+  if (!rpcResult?.ok) {
+    log.error('program.save.rpc_result', rpcResult?.error ?? 'unknown', {
+      clientId,
+      programId: program.id,
+    });
+    return NextResponse.json({ error: 'Failed to save program' }, { status: 500 });
+  }
+
+  for (const m of keyMigrations) {
+    await migrateBestEffortKey(clientId, m.oldKey, m.newKey);
+  }
 
   // Snapshot the post-edit state for the revision history. Best-effort —
   // a snapshot failure is logged but does not fail the save (history is

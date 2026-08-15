@@ -4,6 +4,7 @@ import { startOfWeek, formatISO } from 'date-fns';
 
 import { db } from './supabase';
 import { buildSuggestionsByClient, type Suggestion } from './suggestions';
+import { pickTopPRsByClient } from './signals/progression';
 import {
   buildWeeklyCoachingNote,
   type PRObservation,
@@ -187,31 +188,15 @@ export async function buildWeeklyReport(at: Date = new Date()): Promise<WeeklyRe
   }
 
   const prsByClient = new Map<string, number>();
-  // Also pick the top PR per client by e1RM (Epley) for the Stage-5
-  // weekly-note tier-1 celebration. Falls back to null if the row has
-  // missing weight/reps.
-  const topPRByClient = new Map<string, PRObservation>();
   for (const r of prRows ?? []) {
     prsByClient.set(r.client_id, (prsByClient.get(r.client_id) ?? 0) + 1);
-    if (r.best_weight == null || r.best_reps == null) continue;
-    const weight = Number(r.best_weight);
-    const reps = r.best_reps;
-    const e1RM = weight * (1 + reps / 30);
-    const prior = topPRByClient.get(r.client_id);
-    const priorE1RM = prior ? prior.weight * (1 + prior.reps / 30) : -Infinity;
-    if (e1RM <= priorE1RM) continue;
-    // exercise_name_key is "dN::display name" — strip the day prefix for
-    // display in the weekly note. Capitalise the first letter so the
-    // body text reads like a coach wrote it.
-    const display = (r.exercise_name_key as string).replace(/^d\d+::/, '');
-    const displayCased = display.charAt(0).toUpperCase() + display.slice(1);
-    topPRByClient.set(r.client_id, {
-      exerciseName: displayCased,
-      weight,
-      unit: (r.best_unit as 'kg' | 'lb' | null) ?? 'kg',
-      reps,
-    });
   }
+  // Top PR per client by e1RM for the Stage-5 weekly-note tier-1
+  // celebration — kg-normalized via the shared helper (the old inline
+  // compare on raw weight mis-ranked mixed-unit PRs).
+  const topPRByClient: Map<string, PRObservation> = pickTopPRsByClient(
+    prRows ?? [],
+  );
 
   const stalledByClient = new Map<string, number>();
   for (const r of stalledRows ?? [])
