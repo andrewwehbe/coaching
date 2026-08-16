@@ -1,11 +1,12 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useId } from 'react';
 
 import type { Cue } from '@/lib/cue';
 import { CueDisplay } from './cue-display';
 import { SelfNoteCard } from './self-note-card';
 import { RestTimer } from '@/components/rest-timer';
+import { Button, Field, TextareaField, toast } from '@/components/ui';
 import { enqueueAndSend } from '@/lib/offline-queue';
 import { MAX_VIDEO_BYTES } from '@/lib/config';
 import { toggleWeightSign } from '@/lib/weight';
@@ -15,11 +16,13 @@ import {
   CoachNoteCard,
   DeloadCard,
   DoneScreen,
+  EndSessionSheet,
   ExerciseHeading,
   NoExercisesScreen,
   PainModal,
   ReasonModal,
   SessionChrome,
+  SessionFooter,
   summarizeSet,
   useOfflineSync,
   useWorkoutLifecycle,
@@ -33,6 +36,37 @@ export type { LoggedSet };
 export type ExerciseState = ExerciseCore & {
   cue: Cue;
 };
+
+/**
+ * Per-exercise form draft. Keyed by exercise id so flipping Prev/Next to
+ * review another exercise no longer wipes a half-typed entry — the old
+ * version kept ONE set of form states and reset them on every navigation.
+ */
+type Draft = {
+  weight: string;
+  unit: 'kg' | 'lb';
+  reps: string;
+  rir: string;
+  notes: string;
+  cardioMin: string;
+  videoUrl: string | null;
+  videoError: string | null;
+  editingSetNumber: number | null;
+};
+
+function emptyDraft(unit: 'kg' | 'lb'): Draft {
+  return {
+    weight: '',
+    unit,
+    reps: '',
+    rir: '',
+    notes: '',
+    cardioMin: '',
+    videoUrl: null,
+    videoError: null,
+    editingSetNumber: null,
+  };
+}
 
 export function WorkoutSession({
   workoutId,
@@ -102,52 +136,57 @@ export function WorkoutSession({
     setModal,
     setState,
     setCurrentIdx,
-    onAdvanced: resetForm,
   });
 
-  // Set form state per exercise.
-  const [weight, setWeight] = useState('');
-  const [unit, setUnit] = useState<'kg' | 'lb'>('kg');
-  const [reps, setReps] = useState('');
-  const [rir, setRir] = useState('');
-  const [notes, setNotes] = useState('');
-  const [cardioMin, setCardioMin] = useState('');
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [videoBusy, setVideoBusy] = useState(false);
-  const [videoError, setVideoError] = useState<string | null>(null);
-  const [videoProgress, setVideoProgress] = useState(0);
+  // ---- Per-exercise drafts ----
+  // The unit choice sticks across exercises (lb clients set it once).
+  const lastUnitRef = useRef<'kg' | 'lb'>('kg');
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const draft: Draft = current
+    ? drafts[current.id] ?? emptyDraft(lastUnitRef.current)
+    : emptyDraft('kg');
 
-  // When non-null, the form is editing an existing set (by set_number) on
-  // the current exercise instead of appending a new one. The submit
-  // re-uses the upsert on (exercise_log_id, set_number) so the row is
-  // replaced server-side.
-  const [editingSetNumber, setEditingSetNumber] = useState<number | null>(null);
+  function patchDraft(exerciseId: string, patch: Partial<Draft>) {
+    if (patch.unit) lastUnitRef.current = patch.unit;
+    setDrafts((prev) => ({
+      ...prev,
+      [exerciseId]: {
+        ...(prev[exerciseId] ?? emptyDraft(lastUnitRef.current)),
+        ...patch,
+      },
+    }));
+  }
+
+  function clearDraft(exerciseId: string) {
+    setDrafts((prev) => {
+      const next = { ...prev };
+      delete next[exerciseId];
+      return next;
+    });
+  }
+
+  // Video upload transfer state is global (one upload at a time); the
+  // resulting path lands in the owning exercise's draft.
+  const [videoBusy, setVideoBusy] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
 
   // The submit is optimistic (no network wait), so the button never
   // disables long enough to absorb an accidental double-tap. Debounce here.
   const lastSubmitAtRef = useRef(0);
 
-  function resetForm() {
-    setWeight('');
-    setReps('');
-    setRir('');
-    setNotes('');
-    setCardioMin('');
-    setVideoUrl(null);
-    setVideoError(null);
-    setEditingSetNumber(null);
-  }
-
   function loadSetForEdit(s: LoggedSet) {
-    setEditingSetNumber(s.setNumber);
-    if (s.unit === 'lb' || s.unit === 'kg') setUnit(s.unit);
-    setWeight(s.weight != null ? String(s.weight) : '');
-    setReps(s.reps != null ? String(s.reps) : '');
-    setRir(s.rir != null ? String(s.rir) : '');
-    setNotes(s.notes ?? '');
-    setCardioMin(s.cardioMinutes != null ? String(s.cardioMinutes) : '');
-    setVideoUrl(s.videoUrl ?? null);
-    setVideoError(null);
+    if (!current) return;
+    patchDraft(current.id, {
+      editingSetNumber: s.setNumber,
+      unit: s.unit === 'lb' || s.unit === 'kg' ? s.unit : draft.unit,
+      weight: s.weight != null ? String(s.weight) : '',
+      reps: s.reps != null ? String(s.reps) : '',
+      rir: s.rir != null ? String(s.rir) : '',
+      notes: s.notes ?? '',
+      cardioMin: s.cardioMinutes != null ? String(s.cardioMinutes) : '',
+      videoUrl: s.videoUrl ?? null,
+      videoError: null,
+    });
   }
 
   // In best mode the form always represents "the best set" — set_number is
@@ -155,10 +194,10 @@ export function WorkoutSession({
   // counts as the final set so the exercise advances.
   const setNumber = bestMode
     ? 1
-    : editingSetNumber ?? (current?.sets.length ?? 0) + 1;
+    : draft.editingSetNumber ?? (current?.sets.length ?? 0) + 1;
   const isLastPrescribed = bestMode
     ? true
-    : !editingSetNumber &&
+    : !draft.editingSetNumber &&
       current?.prescribedSets != null &&
       setNumber >= current.prescribedSets;
 
@@ -166,8 +205,8 @@ export function WorkoutSession({
    * Optimistic: the set list, rest timer, and advance all react instantly;
    * the network write (a single log_set RPC server-side) settles in the
    * background. On a hard failure (4xx — offline/5xx auto-queue as 202)
-   * everything rolls back: the set list, the position, and the typed form
-   * values, so nothing is silently lost.
+   * everything rolls back: the set list, the position, and the typed
+   * draft, surfaced as a toast so nothing is silently lost.
    */
   function submitSet(opts?: { useLast?: boolean }) {
     if (!current) return;
@@ -191,31 +230,29 @@ export function WorkoutSession({
       setNumber: effectiveSetNumber,
     };
     if (current.isCardio) {
-      body.cardioMinutes = cardioMin ? Number(cardioMin) : null;
+      body.cardioMinutes = draft.cardioMin ? Number(draft.cardioMin) : null;
     } else if (useLast && lastSet) {
       body.weight = lastSet.weight;
-      body.unit = lastSet.unit ?? unit;
+      body.unit = lastSet.unit ?? draft.unit;
       body.reps = lastSet.reps;
       body.rir = null;
     } else {
       // Normalize comma decimal separator (Arabic/European keyboards) to dot
       // so Number() doesn't return NaN.
-      body.weight = weight ? Number(weight.replace(',', '.')) : null;
-      body.unit = unit;
-      body.reps = reps ? Number(reps) : null;
-      body.rir = rir ? Number(rir) : null;
+      body.weight = draft.weight ? Number(draft.weight.replace(',', '.')) : null;
+      body.unit = draft.unit;
+      body.reps = draft.reps ? Number(draft.reps) : null;
+      body.rir = draft.rir ? Number(draft.rir) : null;
     }
-    if (!useLast && notes) body.notes = notes;
+    if (!useLast && draft.notes) body.notes = draft.notes;
     // videoUrl actually holds the bucket-relative storage path; server expects videoPath.
-    if (!useLast && videoUrl) body.videoPath = videoUrl;
+    if (!useLast && draft.videoUrl) body.videoPath = draft.videoUrl;
 
-    // Rollback snapshot — the exercise entry, position, and typed values.
+    // Rollback snapshot — the exercise entry, position, and typed draft.
     const prevExercise = current;
     const prevIdx = currentIdx;
-    const formSnapshot = {
-      weight, unit, reps, rir, notes, cardioMin, videoUrl, editingSetNumber,
-    };
-    const wasEditing = !useLast && editingSetNumber != null;
+    const draftSnapshot = draft;
+    const wasEditing = !useLast && draft.editingSetNumber != null;
 
     // ---- Optimistic apply ----
     setState((prev) => {
@@ -246,7 +283,7 @@ export function WorkoutSession({
       if (effectiveIsLast) setCurrentIdx((idx) => advanceFrom(next, idx));
       return next;
     });
-    resetForm();
+    clearDraft(current.id);
     // Rest starts immediately — an edit or a final set doesn't need one.
     setResting(!wasEditing && !effectiveIsLast);
 
@@ -258,23 +295,16 @@ export function WorkoutSession({
         );
         setCurrentIdx(prevIdx);
         setResting(false);
-        setWeight(formSnapshot.weight);
-        setUnit(formSnapshot.unit);
-        setReps(formSnapshot.reps);
-        setRir(formSnapshot.rir);
-        setNotes(formSnapshot.notes);
-        setCardioMin(formSnapshot.cardioMin);
-        setVideoUrl(formSnapshot.videoUrl);
-        setEditingSetNumber(formSnapshot.editingSetNumber);
-        alert(message);
+        setDrafts((prev) => ({ ...prev, [prevExercise.id]: draftSnapshot }));
+        toast(message, 'danger');
       };
       try {
         const res = await enqueueAndSend(`/api/client/workout/${workoutId}/set`, body);
         if (!res.ok && res.status !== 202) {
           const err = await res.json().catch(() => ({}));
           rollback(
-            (err.error ?? 'Failed to save set') +
-              ' — the set was not logged. Your numbers are back in the form.',
+            (err.error ?? "Couldn't save the set") +
+              ' — nothing was logged. Your numbers are back in the form.',
           );
           return;
         }
@@ -284,7 +314,7 @@ export function WorkoutSession({
           if (data?.pr?.message) setPrMessage(data.pr.message);
         }
       } catch {
-        rollback('Failed to save set — the set was not logged. Try again.');
+        rollback("Couldn't save the set — nothing was logged. Try again.");
       }
     })();
   }
@@ -294,8 +324,7 @@ export function WorkoutSession({
     // Just clear "isLastPrescribed" by allowing another submit cycle.
     // We do this by NOT marking the exercise complete and letting the user
     // submit another set above the prescribed count.
-    // Resetting form is enough.
-    resetForm();
+    clearDraft(current.id);
   }
 
   function moveToNextExercise() {
@@ -308,16 +337,20 @@ export function WorkoutSession({
       setCurrentIdx((idx) => advanceFrom(next, idx));
       return next;
     });
-    resetForm();
+    clearDraft(current.id);
   }
 
   async function uploadVideo(file: File) {
+    if (!current) return;
+    const exerciseId = current.id;
     setVideoBusy(true);
-    setVideoError(null);
     setVideoProgress(0);
+    patchDraft(exerciseId, { videoError: null });
     try {
       if (file.size > MAX_VIDEO_BYTES) {
-        setVideoError(`Max ${Math.round(MAX_VIDEO_BYTES / (1024 * 1024))} MB.`);
+        patchDraft(exerciseId, {
+          videoError: `Max ${Math.round(MAX_VIDEO_BYTES / (1024 * 1024))} MB.`,
+        });
         return;
       }
       const presign = await fetch('/api/client/upload-url', {
@@ -331,7 +364,7 @@ export function WorkoutSession({
       });
       if (!presign.ok) {
         const e = await presign.json().catch(() => ({}));
-        setVideoError(e.error ?? 'Upload prep failed');
+        patchDraft(exerciseId, { videoError: e.error ?? 'Upload prep failed' });
         return;
       }
       const { uploadUrl, path } = await presign.json();
@@ -355,10 +388,12 @@ export function WorkoutSession({
       });
 
       if (!ok) {
-        setVideoError('Upload failed. Check signal and try again.');
+        patchDraft(exerciseId, {
+          videoError: 'Upload failed. Check signal and try again.',
+        });
         return;
       }
-      setVideoUrl(path);
+      patchDraft(exerciseId, { videoUrl: path });
     } finally {
       setVideoBusy(false);
     }
@@ -391,14 +426,8 @@ export function WorkoutSession({
         completedCount={completedCount}
         total={state.length}
         currentIdx={currentIdx}
-        onPrev={() => {
-          setCurrentIdx((i) => Math.max(0, i - 1));
-          resetForm();
-        }}
-        onNext={() => {
-          setCurrentIdx((i) => Math.min(state.length - 1, i + 1));
-          resetForm();
-        }}
+        onPrev={() => setCurrentIdx((i) => Math.max(0, i - 1))}
+        onNext={() => setCurrentIdx((i) => Math.min(state.length - 1, i + 1))}
         online={online}
         pending={pending}
       />
@@ -423,7 +452,7 @@ export function WorkoutSession({
       {isDeload && <DeloadCard />}
 
       {isFirstSetOverall && (
-        <div className="mt-5 rounded-2xl border border-warn/35 bg-warn/10 p-4 text-sm text-warn">
+        <div className="mt-5 rounded-[var(--r-card)] border border-warn/35 bg-warn/10 p-4 text-sm text-warn">
           <strong className="font-semibold">Warmup first.</strong> Do at least one
           warmup set with light weight and ensure form is perfect before logging
           working sets.
@@ -431,7 +460,7 @@ export function WorkoutSession({
       )}
 
       {current.sets.length > 0 && (
-        <section className="mt-6 rounded-2xl border border-border bg-surface/40 px-3 py-2.5">
+        <section className="mt-6 rounded-[var(--r-card)] border border-border bg-surface/40 px-3 py-2.5">
           <p className="text-[10px] uppercase tracking-[0.18em] text-faint mb-1.5 px-1">
             {bestMode ? 'Best set' : 'Logged'}
           </p>
@@ -439,15 +468,15 @@ export function WorkoutSession({
             {[...current.sets]
               .sort((a, b) => a.setNumber - b.setNumber)
               .map((s) => {
-                const isEditingThis = editingSetNumber === s.setNumber;
+                const isEditingThis = draft.editingSetNumber === s.setNumber;
                 return (
                   <li key={s.setNumber}>
                     <button
                       type="button"
                       onClick={() =>
-                        isEditingThis ? resetForm() : loadSetForEdit(s)
+                        isEditingThis ? clearDraft(current.id) : loadSetForEdit(s)
                       }
-                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition-colors ${
+                      className={`flex w-full items-center justify-between rounded-[var(--r-control)] px-3 py-2 text-sm transition-colors ${
                         isEditingThis
                           ? 'bg-primary/15 text-primary-hi'
                           : 'hover:bg-surface-2 text-text'
@@ -476,14 +505,14 @@ export function WorkoutSession({
         <div className="flex items-baseline justify-between">
           <h2 className="text-lg font-semibold">
             {bestMode
-              ? editingSetNumber != null
+              ? draft.editingSetNumber != null
                 ? 'Edit best set'
                 : 'Best set'
               : (
                 <>
-                  {editingSetNumber != null ? 'Edit set ' : 'Set '}
+                  {draft.editingSetNumber != null ? 'Edit set ' : 'Set '}
                   {setNumber}
-                  {current.prescribedSets && editingSetNumber == null ? (
+                  {current.prescribedSets && draft.editingSetNumber == null ? (
                     <span className="text-faint text-sm font-normal ml-1.5">
                       of {current.prescribedSets}
                     </span>
@@ -491,145 +520,112 @@ export function WorkoutSession({
                 </>
               )}
           </h2>
-          {editingSetNumber != null && (
-            <button
-              type="button"
-              onClick={resetForm}
-              className="text-xs text-muted hover:text-text transition-colors"
-            >
+          {draft.editingSetNumber != null && (
+            <Button variant="textlink" onClick={() => clearDraft(current.id)}>
               Cancel edit
-            </button>
+            </Button>
           )}
         </div>
 
         {current.isCardio ? (
-          <CardioFields
-            cardioType={current.cardioType}
-            minutes={cardioMin}
-            setMinutes={setCardioMin}
+          <Field
+            label={`Minutes ${current.cardioType ? `(${current.cardioType})` : ''}`}
+            type="number"
+            inputMode="numeric"
+            value={draft.cardioMin}
+            onChange={(e) => patchDraft(current.id, { cardioMin: e.target.value })}
           />
         ) : (
           <StrengthFields
-            weight={weight}
-            setWeight={setWeight}
-            unit={unit}
-            setUnit={setUnit}
-            reps={reps}
-            setReps={setReps}
-            rir={rir}
-            setRir={setRir}
+            draft={draft}
+            onPatch={(patch) => patchDraft(current.id, patch)}
           />
         )}
 
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
+        <TextareaField
+          value={draft.notes}
+          onChange={(e) => patchDraft(current.id, { notes: e.target.value })}
           placeholder="Notes (optional)"
           rows={2}
-          className="w-full px-3 py-2 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-base transition-shadow placeholder:text-faint"
         />
 
         <VideoUpload
-          videoUrl={videoUrl}
+          videoUrl={draft.videoUrl}
           busy={videoBusy}
           progress={videoProgress}
-          error={videoError}
+          error={draft.videoError}
           onPick={uploadVideo}
-          onClear={() => setVideoUrl(null)}
+          onClear={() => patchDraft(current.id, { videoUrl: null })}
         />
 
         <div className="flex gap-2">
-          <button
-            type="button"
+          <Button
+            variant="dangerGhost"
+            className="flex-1"
             onClick={() => setModal({ kind: 'pain', exerciseId: current.id, name: current.name })}
-            className="flex-1 h-11 rounded-xl border border-danger/40 text-danger text-sm font-medium hover:bg-danger/10 transition-colors"
           >
             Report pain
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="ghost"
+            className="flex-1"
             onClick={() => setModal({ kind: 'skip', exerciseId: current.id, name: current.name })}
-            className="flex-1 h-11 rounded-xl border border-border text-muted text-sm font-medium hover:bg-surface-2 hover:text-text transition-colors"
           >
             Skip exercise
-          </button>
+          </Button>
         </div>
 
         {(() => {
-          if (bestMode || current.isCardio || editingSetNumber != null) return null;
+          if (bestMode || current.isCardio || draft.editingSetNumber != null) return null;
           if (current.sets.length === 0) return null;
           const last = current.sets[current.sets.length - 1];
           if (last.weight == null || last.reps == null) return null;
           const unitLabel = last.unit ?? '';
           return (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              className="w-full"
               onClick={() => submitSet({ useLast: true })}
-              className="w-full h-11 rounded-xl border border-border text-muted text-sm font-medium hover:bg-surface-2 hover:text-text transition-colors disabled:opacity-40"
             >
               Same as previous ({last.weight}
               {unitLabel} × {last.reps})
-            </button>
+            </Button>
           );
         })()}
 
-        <button
-          type="button"
+        <Button
+          variant="cta"
           onClick={() => submitSet()}
-          disabled={isFormEmpty(current.isCardio, weight, reps, cardioMin)}
-          className="w-full h-14 rounded-2xl bg-primary hover:bg-primary-hi active:bg-primary-press text-bg text-base font-semibold disabled:opacity-40 disabled:shadow-none transition-all shadow-[0_10px_40px_-12px_rgba(34,197,94,0.7)]"
+          disabled={isFormEmpty(current.isCardio, draft)}
         >
           {bestMode
-            ? editingSetNumber != null
+            ? draft.editingSetNumber != null
               ? 'Save best set'
               : 'Log best set'
-            : editingSetNumber != null
+            : draft.editingSetNumber != null
               ? `Save set ${setNumber}`
               : isLastPrescribed
                 ? 'Log final set'
                 : `Log set ${setNumber}`}
-        </button>
+        </Button>
 
         {!bestMode && isLastPrescribed && (
-          <button
-            type="button"
-            onClick={addExtraSet}
-            className="w-full text-center text-sm text-muted hover:text-text transition-colors"
-          >
+          <Button variant="textlink" className="w-full justify-center text-sm text-muted" onClick={addExtraSet}>
             Add an extra set
-          </button>
+          </Button>
         )}
 
         {!bestMode && current.sets.length > 0 && !isLastPrescribed && (
-          <button
-            type="button"
+          <Button
+            variant="textlink"
+            className="w-full justify-center text-sm text-muted"
             onClick={moveToNextExercise}
-            className="w-full text-center text-sm text-muted hover:text-text transition-colors"
           >
             Done with this exercise
-          </button>
+          </Button>
         )}
 
-        <div className="pt-3 mt-3 border-t border-border flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={cancelWorkout}
-            disabled={submitting}
-            className="text-xs text-faint hover:text-warn transition-colors"
-          >
-            Cancel workout
-          </button>
-          {!noSetsLogged && (
-            <button
-              type="button"
-              onClick={completeWorkout}
-              disabled={submitting}
-              className="text-xs text-primary-hi hover:text-primary transition-colors"
-            >
-              End workout
-            </button>
-          )}
-        </div>
+        <SessionFooter onOpenEndSheet={() => setModal({ kind: 'end' })} />
       </section>
 
       {resting && <RestTimer onDone={() => setResting(false)} />}
@@ -656,52 +652,47 @@ export function WorkoutSession({
           onSkip={(r, t) => submitPain(r, t, false)}
         />
       )}
+      {modal.kind === 'end' && (
+        <EndSessionSheet
+          canFinish={!noSetsLogged}
+          submitting={submitting}
+          onFinish={completeWorkout}
+          onCancelWorkout={cancelWorkout}
+          onClose={() => setModal({ kind: 'none' })}
+        />
+      )}
     </main>
   );
 }
 
-function isFormEmpty(
-  isCardio: boolean,
-  weight: string,
-  reps: string,
-  cardioMin: string
-): boolean {
-  if (isCardio) return !cardioMin;
-  return !weight || !reps;
+function isFormEmpty(isCardio: boolean, draft: Draft): boolean {
+  if (isCardio) return !draft.cardioMin;
+  return !draft.weight || !draft.reps;
 }
 
 function StrengthFields({
-  weight,
-  setWeight,
-  unit,
-  setUnit,
-  reps,
-  setReps,
-  rir,
-  setRir,
+  draft,
+  onPatch,
 }: {
-  weight: string;
-  setWeight: (v: string) => void;
-  unit: 'kg' | 'lb';
-  setUnit: (u: 'kg' | 'lb') => void;
-  reps: string;
-  setReps: (v: string) => void;
-  rir: string;
-  setRir: (v: string) => void;
+  draft: Draft;
+  onPatch: (patch: Partial<Draft>) => void;
 }) {
+  const weightId = useId();
   return (
     <div className="space-y-3">
       <div className="flex gap-2">
         <div className="flex-1">
-          <label className="block text-xs text-faint mb-1">Weight</label>
+          <label htmlFor={weightId} className="block text-xs text-faint mb-1">
+            Weight
+          </label>
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setWeight(toggleWeightSign(weight))}
+              onClick={() => onPatch({ weight: toggleWeightSign(draft.weight) })}
               aria-label="Toggle negative weight"
               title="Negative for counterweighted machines (e.g. pendulum)"
-              className={`h-12 w-12 shrink-0 rounded-xl border text-xl leading-none transition-colors ${
-                weight.trim().startsWith('-')
+              className={`h-12 w-12 shrink-0 rounded-[var(--r-control)] border text-xl leading-none transition-colors ${
+                draft.weight.trim().startsWith('-')
                   ? 'bg-primary/15 text-primary-hi border-primary/40'
                   : 'bg-surface text-muted border-border hover:text-text'
               }`}
@@ -709,24 +700,26 @@ function StrengthFields({
               ±
             </button>
             <input
+              id={weightId}
               type="text"
               inputMode="decimal"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-              className="w-full h-12 px-3 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-lg tabular-nums transition-shadow"
+              value={draft.weight}
+              onChange={(e) => onPatch({ weight: e.target.value })}
+              className="w-full h-12 px-3 rounded-[var(--r-control)] bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-lg tabular-nums transition-shadow"
             />
           </div>
         </div>
         <div className="w-20">
-          <label className="block text-xs text-faint mb-1">Unit</label>
-          <div className="grid grid-cols-2 gap-1 h-12 p-1 rounded-xl bg-surface border border-border">
+          <span className="block text-xs text-faint mb-1">Unit</span>
+          <div className="grid grid-cols-2 gap-1 h-12 p-1 rounded-[var(--r-control)] bg-surface border border-border">
             {(['kg', 'lb'] as const).map((u) => (
               <button
                 key={u}
                 type="button"
-                onClick={() => setUnit(u)}
+                onClick={() => onPatch({ unit: u })}
+                aria-pressed={draft.unit === u}
                 className={`text-sm font-medium rounded-lg transition-colors ${
-                  unit === u
+                  draft.unit === u
                     ? 'bg-primary/15 text-primary-hi ring-1 ring-primary/40'
                     : 'text-muted hover:text-text'
                 }`}
@@ -738,52 +731,23 @@ function StrengthFields({
         </div>
       </div>
       <div className="flex gap-2">
-        <div className="flex-1">
-          <label className="block text-xs text-faint mb-1">Reps</label>
-          <input
-            type="number"
-            inputMode="numeric"
-            value={reps}
-            onChange={(e) => setReps(e.target.value)}
-            className="w-full h-12 px-3 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-lg tabular-nums transition-shadow"
-          />
-        </div>
-        <div className="flex-1">
-          <label className="block text-xs text-faint mb-1">RIR (optional)</label>
-          <input
-            type="number"
-            inputMode="numeric"
-            value={rir}
-            onChange={(e) => setRir(e.target.value)}
-            className="w-full h-12 px-3 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-lg tabular-nums transition-shadow"
-          />
-        </div>
+        <Field
+          label="Reps"
+          className="flex-1"
+          type="number"
+          inputMode="numeric"
+          value={draft.reps}
+          onChange={(e) => onPatch({ reps: e.target.value })}
+        />
+        <Field
+          label="RIR (optional)"
+          className="flex-1"
+          type="number"
+          inputMode="numeric"
+          value={draft.rir}
+          onChange={(e) => onPatch({ rir: e.target.value })}
+        />
       </div>
-    </div>
-  );
-}
-
-function CardioFields({
-  cardioType,
-  minutes,
-  setMinutes,
-}: {
-  cardioType: 'treadmill' | 'elliptical' | 'stairmaster' | null;
-  minutes: string;
-  setMinutes: (v: string) => void;
-}) {
-  return (
-    <div>
-      <label className="block text-xs text-faint mb-1">
-        Minutes {cardioType ? `(${cardioType})` : ''}
-      </label>
-      <input
-        type="number"
-        inputMode="numeric"
-        value={minutes}
-        onChange={(e) => setMinutes(e.target.value)}
-        className="w-full h-12 px-3 rounded-xl bg-surface border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-lg tabular-nums transition-shadow"
-      />
     </div>
   );
 }
@@ -805,21 +769,17 @@ function VideoUpload({
 }) {
   if (videoUrl) {
     return (
-      <div className="flex items-center justify-between rounded-xl border border-primary/30 bg-primary/8 px-3 py-2.5 text-sm">
+      <div className="flex items-center justify-between rounded-[var(--r-control)] border border-primary/30 bg-primary/8 px-3 py-2.5 text-sm">
         <span className="text-primary-hi font-medium">📹 Video attached</span>
-        <button
-          type="button"
-          onClick={onClear}
-          className="text-muted hover:text-text transition-colors"
-        >
+        <Button variant="textlink" onClick={onClear}>
           Remove
-        </button>
+        </Button>
       </div>
     );
   }
   if (busy) {
     return (
-      <div className="rounded-xl border border-primary/40 bg-primary/8 px-3 py-3 text-sm">
+      <div className="rounded-[var(--r-control)] border border-primary/40 bg-primary/8 px-3 py-3 text-sm">
         <div className="flex items-center justify-between text-primary-hi mb-2">
           <span>Uploading video…</span>
           <span className="tabular-nums">{progress}%</span>
@@ -838,7 +798,7 @@ function VideoUpload({
   }
   return (
     <div className="space-y-1">
-      <label className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong px-3 py-3 text-sm text-muted cursor-pointer transition-colors hover:border-primary/50 hover:text-text">
+      <label className="flex items-center justify-center gap-2 rounded-[var(--r-control)] border border-dashed border-border-strong px-3 py-3 text-sm text-muted cursor-pointer transition-colors hover:border-primary/50 hover:text-text">
         <span>📹 Add video (optional, ≤ 25 MB)</span>
         <input
           type="file"

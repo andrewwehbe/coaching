@@ -3,6 +3,7 @@
 import { useState } from 'react';
 
 import { SelfNoteCard } from './self-note-card';
+import { Button } from '@/components/ui';
 import { enqueueAndSend } from '@/lib/offline-queue';
 import { toggleWeightSign } from '@/lib/weight';
 import {
@@ -11,12 +12,14 @@ import {
   DeloadCard,
   describeSet,
   DoneScreen,
+  EndSessionSheet,
   ExerciseHeading,
   NoExercisesScreen,
   num,
   PainModal,
   ReasonModal,
   SessionChrome,
+  SessionFooter,
   useOfflineSync,
   useWorkoutLifecycle,
   type LoggedSet,
@@ -387,47 +390,38 @@ export function WorkoutSessionAll({
         {errorMsg && <p className="text-sm text-danger">{errorMsg}</p>}
 
         <div className="flex gap-2 pt-2">
-          <button
-            type="button"
+          <Button
+            variant="dangerGhost"
+            className="flex-1"
             onClick={() => setModal({ kind: 'pain', exerciseId: current.id, name: current.name })}
-            className="flex-1 h-11 rounded-xl border border-danger/40 text-danger text-sm font-medium hover:bg-danger/10 transition-colors"
           >
             Report pain
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="ghost"
+            className="flex-1"
             onClick={() => setModal({ kind: 'skip', exerciseId: current.id, name: current.name })}
-            className="flex-1 h-11 rounded-xl border border-border text-muted text-sm font-medium hover:bg-surface-2 hover:text-text transition-colors"
           >
             Skip exercise
-          </button>
+          </Button>
         </div>
 
-        <button
-          type="button"
-          onClick={saveExercise}
-          className="w-full h-14 rounded-2xl bg-primary hover:bg-primary-hi active:bg-primary-press text-bg text-base font-semibold disabled:opacity-40 disabled:shadow-none transition-all shadow-[0_10px_40px_-12px_rgba(34,197,94,0.7)]"
-        >
+        <Button variant="cta" onClick={saveExercise}>
           {current.logStatus === 'completed'
             ? 'Save changes & next'
             : 'Save sets & next'}
-        </button>
+        </Button>
 
-        <div className="pt-3 mt-3 border-t border-border flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={cancelWorkout}
-            disabled={submitting}
-            className="text-xs text-faint hover:text-warn transition-colors"
-          >
-            Cancel workout
-          </button>
-          {completedCount === state.length - 1 && current.logStatus == null && (
-            <span className="text-[10px] text-faint uppercase tracking-[0.18em]">
-              Last one
-            </span>
-          )}
-        </div>
+        <SessionFooter
+          onOpenEndSheet={() => setModal({ kind: 'end' })}
+          trailing={
+            completedCount === state.length - 1 && current.logStatus == null ? (
+              <span className="text-[10px] text-faint uppercase tracking-[0.18em]">
+                Last one
+              </span>
+            ) : undefined
+          }
+        />
       </section>
 
       {modal.kind === 'skip' && (
@@ -446,6 +440,15 @@ export function WorkoutSessionAll({
           submitting={submitting}
           onContinue={(r, t) => submitPain(r, t, true)}
           onSkip={(r, t) => submitPain(r, t, false)}
+        />
+      )}
+      {modal.kind === 'end' && (
+        <EndSessionSheet
+          canFinish={state.some((e) => e.sets.length > 0)}
+          submitting={submitting}
+          onFinish={completeWorkout}
+          onCancelWorkout={cancelWorkout}
+          onClose={() => setModal({ kind: 'none' })}
         />
       )}
     </main>

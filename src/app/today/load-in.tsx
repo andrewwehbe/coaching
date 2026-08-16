@@ -2,7 +2,13 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, type CSSProperties } from 'react';
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
+import { Button, Sheet } from '@/components/ui';
 import './load-in.css';
 
 type CheckInPill = {
@@ -29,16 +35,32 @@ type Suggested = {
 const SLEEVE_TOP = 8;
 const SLEEVE_BOTTOM = 600;
 const GAP = 8;
-const BASE_DELAY = 500;
-const STAGGER = 600;
-const DROP_DURATION = 850;
-const BUTTON_BUFFER = 200;
+// Compressed timeline: for a 5-day program the last plate lands at
+// ~980ms and the CTA is tappable at ~1.1s. The old choreography
+// (500 + 600/plate + 850 drop) parked the CTA ~3.9s after paint,
+// every single visit.
+const BASE_DELAY = 120;
+const STAGGER = 110;
+const DROP_DURATION = 420;
+const BUTTON_BUFFER = 120;
+
+// SVG canvas the barbell art is drawn in; the DOM overlay maps its
+// coordinates through the measured content box (see below).
+const VIEW_W = 400;
+const VIEW_H = 700;
 
 function shortLabel(label: string): string {
   // Strip "Day N — " or "Day N - " prefix the way /today's main page does.
   const stripped = label.replace(/^Day\s*\d+\s*[—-]\s*/i, '').trim();
   return stripped || label;
 }
+
+const STATUS_LABEL = {
+  done: 'Done',
+  in_progress: 'In progress',
+  missed: 'Missed',
+  upcoming: 'Upcoming',
+} as const;
 
 export function LoadInView({
   greetingName,
@@ -61,6 +83,42 @@ export function LoadInView({
   const [busy, setBusy] = useState(false);
   const [confirmThree, setConfirmThree] = useState(false);
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
+
+  // Same-day revisits skip the choreography entirely — the animation is a
+  // greeting, not a toll. (Reduced-motion is handled by the global CSS
+  // guard, which zeroes durations AND delays.)
+  const [instant, setInstant] = useState(false);
+  useLayoutEffect(() => {
+    const key = `coaching:loadin-seen:${new Date().toDateString()}`;
+    try {
+      if (sessionStorage.getItem(key)) setInstant(true);
+      sessionStorage.setItem(key, '1');
+    } catch {
+      /* private mode — animate every time */
+    }
+  }, []);
+
+  // The svg uses preserveAspectRatio="xMidYMax meet", so its 400×700
+  // canvas is scaled and letterboxed inside the stage. Measure the stage
+  // and derive the content box so DOM overlays land exactly on the
+  // SVG-drawn plates.
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const [box, setBox] = useState<{ scale: number; left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w === 0 || h === 0) return;
+      const scale = Math.min(w / VIEW_W, h / VIEW_H);
+      setBox({ scale, left: (w - VIEW_W * scale) / 2, top: h - VIEW_H * scale });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const sorted = [...days].sort((a, b) => a.dayIndex - b.dayIndex);
   const N = sorted.length;
@@ -154,7 +212,7 @@ export function LoadInView({
   };
 
   return (
-    <div className="loadin-screen">
+    <div className={`loadin-screen${instant ? ' loadin-noanim' : ''}`}>
       <div className="loadin-top">
         <div className="loadin-masthead">
           <div>
@@ -182,12 +240,13 @@ export function LoadInView({
 
       {checkIn && <CheckInBanner pill={checkIn} />}
 
-      <div className="loadin-stage" style={stageStyle}>
+      <div className="loadin-stage" style={stageStyle} ref={stageRef}>
         <div className="loadin-flash" style={{ animation: flashAnim }} />
         <svg
-          viewBox="0 0 400 700"
+          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
           xmlns="http://www.w3.org/2000/svg"
           preserveAspectRatio="xMidYMax meet"
+          aria-hidden="true"
         >
           <defs>
             <linearGradient id="loadin-sleeve" x1="0%" y1="50%" x2="100%" y2="50%">
@@ -272,117 +331,80 @@ export function LoadInView({
           />
           <rect x={198.5} y={621} width={2} height={79} fill="rgba(255,255,255,0.55)" />
 
-          {/* Plates — chronological, Day 1 lands first */}
-          {positioned.map(({ day, yOffset, isCurrent, delay }) => {
-            const isDone = day.status === 'done';
-            const isInProgress = day.status === 'in_progress';
-            const isMissed = day.status === 'missed';
-            const eyebrowFill = isCurrent ? 'var(--primary-hi)' : 'var(--faint)';
-            const strokeColor = isCurrent ? 'var(--primary)' : 'var(--border)';
-            const strokeWidth = isCurrent ? 2 : 1;
-            const label = shortLabel(day.label);
-            return (
-              <g
-                key={day.dayId}
-                className="loadin-plate"
-                style={{
-                  animationDelay: `${delay}ms`,
-                  cursor: isDone ? 'default' : 'pointer',
-                }}
-                onClick={isDone ? undefined : () => setSelectedDayId(day.dayId)}
-              >
-                <g transform={`translate(0 ${yOffset})`}>
-                  <rect
-                    x={20}
-                    y={0}
-                    width={360}
-                    height={plateHeight}
-                    rx={14}
-                    fill="#000"
-                    stroke={strokeColor}
-                    strokeWidth={strokeWidth}
-                  />
-                  <text
-                    x={40}
-                    y={plateHeight / 2 - 10}
-                    fontFamily="ui-sans-serif, system-ui, sans-serif"
-                    fontSize={11}
-                    letterSpacing={2.6}
-                    fill={eyebrowFill}
-                  >
-                    {`DAY ${day.dayIndex}`}
-                  </text>
-                  <text
-                    x={40}
-                    y={plateHeight / 2 + 24}
-                    fontFamily="ui-sans-serif, system-ui, sans-serif"
-                    fontWeight={500}
-                    fontSize={22}
-                    fill="var(--text)"
-                  >
-                    {label}
-                  </text>
-                  <StatusChip
-                    cx={360}
-                    cy={plateHeight / 2 - 12}
-                    label={
-                      isDone
-                        ? 'DONE'
-                        : isInProgress
-                          ? 'IN PROGRESS'
-                          : isMissed
-                            ? 'MISSED'
-                            : 'UPCOMING'
-                    }
-                    tone={
-                      isDone
-                        ? 'done'
-                        : isInProgress
-                          ? 'progress'
-                          : isMissed
-                            ? 'missed'
-                            : 'upcoming'
-                    }
-                  />
-                  {/* View the full day on one screen — independent of the
-                      plate's select-to-start tap (stopPropagation). */}
-                  <g
-                    transform={`translate(0 ${plateHeight - 30})`}
-                    style={{ cursor: 'pointer' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      router.push(`/day/${day.dayId}`);
-                    }}
-                    role="button"
-                    aria-label={`View ${label}`}
-                  >
-                    <rect
-                      x={290}
-                      y={0}
-                      width={70}
-                      height={22}
-                      rx={11}
-                      fill="rgba(125,211,252,0.10)"
-                      stroke="rgba(125,211,252,0.32)"
-                      strokeWidth={0.8}
-                    />
-                    <text
-                      x={325}
-                      y={15}
-                      textAnchor="middle"
-                      fontFamily="ui-sans-serif, system-ui, sans-serif"
-                      fontSize={9}
-                      letterSpacing={1.6}
-                      fill="var(--accent)"
-                    >
-                      VIEW →
-                    </text>
-                  </g>
-                </g>
-              </g>
-            );
-          })}
+          {/* Plate metal — art only. Labels, chips, and taps live in the
+              DOM overlay below so they're real, focusable controls. */}
+          {positioned.map(({ day, yOffset, isCurrent, delay }) => (
+            <g
+              key={day.dayId}
+              className="loadin-plate"
+              style={{ animationDelay: `${delay}ms` }}
+            >
+              <rect
+                x={20}
+                y={yOffset}
+                width={360}
+                height={plateHeight}
+                rx={14}
+                fill="#000"
+                stroke={isCurrent ? 'var(--primary)' : 'var(--border)'}
+                strokeWidth={isCurrent ? 2 : 1}
+              />
+            </g>
+          ))}
         </svg>
+
+        {/* Interactive layer — one absolutely-positioned block per plate,
+            mapped through the measured SVG content box. The old version
+            drew day text and a ~19px-tall "VIEW" affordance as SVG with
+            no focus, no wrapping, and sub-44px targets. */}
+        {box && (
+          <div className="loadin-overlay">
+            {positioned.map(({ day, yOffset, isCurrent, impactTime }) => {
+              const label = shortLabel(day.label);
+              const statusLabel = STATUS_LABEL[day.status];
+              const style: CSSProperties = {
+                top: box.top + yOffset * box.scale,
+                left: box.left + 20 * box.scale,
+                width: 360 * box.scale,
+                height: plateHeight * box.scale,
+                ['--reveal-delay' as string]: `${impactTime}ms`,
+              };
+              return (
+                <div key={day.dayId} className="loadin-plate-content" style={style}>
+                  {day.status !== 'done' && (
+                    <button
+                      type="button"
+                      className="loadin-plate-select"
+                      aria-pressed={isCurrent}
+                      aria-label={`Choose Day ${day.dayIndex} — ${label} (${statusLabel})`}
+                      onClick={() => setSelectedDayId(day.dayId)}
+                    />
+                  )}
+                  <div className="loadin-plate-text">
+                    <p
+                      className="loadin-plate-eyebrow"
+                      style={{ color: isCurrent ? 'var(--primary-hi)' : 'var(--faint)' }}
+                    >
+                      Day {day.dayIndex}
+                    </p>
+                    <p className="loadin-plate-label">{label}</p>
+                  </div>
+                  <span className={`loadin-chip loadin-chip-${day.status}`}>
+                    {statusLabel}
+                  </span>
+                  <Link
+                    href={`/day/${day.dayId}`}
+                    className="loadin-view"
+                    aria-label={`View Day ${day.dayIndex} — ${label}`}
+                  >
+                    <span>View →</span>
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         <button
           type="button"
           className="loadin-start"
@@ -406,48 +428,31 @@ export function LoadInView({
       </div>
 
       {confirmThree && (
-        <div
-          className="fixed inset-0 z-50 bg-bg/85 backdrop-blur flex items-end sm:items-center justify-center p-4"
-          style={{ paddingBottom: 'max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))' }}
-          onClick={() => setConfirmThree(false)}
+        <Sheet
+          title="Three days in a row isn't recommended."
+          subtitle="You've trained the last 2 days. Recovery is part of the program — but if you're feeling fresh, you can push through."
+          onClose={() => setConfirmThree(false)}
         >
-          <div
-            className="w-full max-w-sm bg-surface rounded-2xl border border-border p-5 space-y-4 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.22em] text-warn mb-1.5">
-                Heads up
-              </p>
-              <h3 className="text-lg font-semibold leading-tight">
-                Three days in a row isn&rsquo;t recommended.
-              </h3>
-              <p className="mt-2 text-sm text-muted">
-                You&rsquo;ve trained the last 2 days. Recovery is part of the program — but if
-                you&rsquo;re feeling fresh, you can push through.
-              </p>
-            </div>
-            <div className="space-y-2 pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmThree(false);
-                  void startNow();
-                }}
-                className="w-full h-11 rounded-xl bg-primary hover:bg-primary-hi text-bg text-sm font-semibold transition-colors"
-              >
-                Start anyway
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmThree(false)}
-                className="w-full h-11 rounded-xl border border-border text-muted hover:bg-surface-2 hover:text-text text-sm font-medium transition-colors"
-              >
-                Rest today
-              </button>
-            </div>
+          <div className="space-y-2 pt-1">
+            <Button
+              variant="primary"
+              className="w-full"
+              onClick={() => {
+                setConfirmThree(false);
+                void startNow();
+              }}
+            >
+              Start anyway
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => setConfirmThree(false)}
+            >
+              Rest today
+            </Button>
           </div>
-        </div>
+        </Sheet>
       )}
     </div>
   );
@@ -476,52 +481,5 @@ function CheckInBanner({ pill }: { pill: CheckInPill }) {
       <span>{dueLabel}</span>
       <span aria-hidden="true">→</span>
     </Link>
-  );
-}
-
-function StatusChip({
-  cx,
-  cy,
-  label,
-  tone,
-}: {
-  cx: number;
-  cy: number;
-  label: string;
-  tone: 'done' | 'progress' | 'missed' | 'upcoming';
-}) {
-  const palette =
-    tone === 'done'
-      ? { fill: 'rgba(34,197,94,0.15)', stroke: 'rgba(34,197,94,0.3)', text: 'var(--primary-hi)' }
-      : tone === 'progress'
-        ? { fill: 'rgba(125,211,252,0.10)', stroke: 'rgba(125,211,252,0.3)', text: 'var(--accent)' }
-        : tone === 'missed'
-          ? { fill: 'rgba(251,191,36,0.10)', stroke: 'rgba(251,191,36,0.3)', text: 'var(--warn)' }
-          : { fill: 'rgba(18,26,28,0.6)', stroke: 'var(--border)', text: 'var(--muted)' };
-  const width = Math.max(58, label.length * 6.5 + 18);
-  return (
-    <g transform={`translate(${cx} ${cy})`}>
-      <rect
-        x={-width}
-        y={-14}
-        width={width}
-        height={22}
-        rx={11}
-        fill={palette.fill}
-        stroke={palette.stroke}
-        strokeWidth={0.8}
-      />
-      <text
-        x={-width / 2}
-        y={1}
-        textAnchor="middle"
-        fontFamily="ui-sans-serif, system-ui, sans-serif"
-        fontSize={9}
-        letterSpacing={1.6}
-        fill={palette.text}
-      >
-        {label}
-      </text>
-    </g>
   );
 }

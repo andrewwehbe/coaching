@@ -10,9 +10,16 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import {
+  useEffect,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from 'react';
 
 import { OfflineBanner } from '@/components/offline-banner';
+import { Button, Sheet, TextareaField, toast } from '@/components/ui';
 import { enqueueAndSend, flushQueue, pendingCount } from '@/lib/offline-queue';
 
 export type LoggedSet = {
@@ -52,7 +59,8 @@ export type ExerciseCore = {
 export type ModalState =
   | { kind: 'none' }
   | { kind: 'skip'; exerciseId: string; name: string }
-  | { kind: 'pain'; exerciseId: string; name: string };
+  | { kind: 'pain'; exerciseId: string; name: string }
+  | { kind: 'end' };
 
 /** Next incomplete exercise after fromIdx, wrapping; fromIdx if none left. */
 export function advanceFrom<T extends { logStatus: LogStatus }>(
@@ -171,7 +179,7 @@ export function useWorkoutLifecycle<T extends ExerciseCore>({
         reason,
       });
       if (!res.ok && res.status !== 202) {
-        alert('Failed to skip');
+        toast("Couldn't skip — check your connection and try again.", 'danger');
         return;
       }
       setState((prev) => {
@@ -203,7 +211,7 @@ export function useWorkoutLifecycle<T extends ExerciseCore>({
         proceed,
       });
       if (!res.ok && res.status !== 202) {
-        alert('Failed to send pain report');
+        toast("Couldn't send the pain report — try again.", 'danger');
         return;
       }
       setState((prev) => {
@@ -229,7 +237,7 @@ export function useWorkoutLifecycle<T extends ExerciseCore>({
     try {
       const res = await enqueueAndSend(`/api/client/workout/${workoutId}/done`, {});
       if (!res.ok && res.status !== 202) {
-        alert('Failed to complete workout');
+        toast("Couldn't finish the workout — try again.", 'danger');
         return;
       }
       setDoneNow(true);
@@ -248,8 +256,8 @@ export function useWorkoutLifecycle<T extends ExerciseCore>({
     }
   }
 
+  // Confirmation lives in EndSessionSheet — this executes directly.
   async function cancelWorkout() {
-    if (!confirm('Cancel this workout? Nothing will be saved.')) return;
     setSubmitting(true);
     try {
       const res = await fetch(`/api/client/workout/${workoutId}/cancel`, {
@@ -257,7 +265,7 @@ export function useWorkoutLifecycle<T extends ExerciseCore>({
       });
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
-        alert(e.error ?? 'Could not cancel');
+        toast(e.error ?? "Couldn't cancel the workout — try again.", 'danger');
         return;
       }
       router.push('/today');
@@ -482,77 +490,65 @@ export function PainModal({
   const [text, setText] = useState('');
   const [painType, setPainType] = useState<PainType | null>(null);
   return (
-    <div
-      className="fixed inset-0 z-50 bg-bg/85 backdrop-blur flex items-end sm:items-center justify-center p-4"
-      style={{ paddingBottom: 'max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))' }}
-    >
-      <div className="w-full max-w-sm bg-surface rounded-2xl border border-border p-5 space-y-4 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)]">
-        <h3 className="text-lg font-semibold">{title}</h3>
-        {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
-
-        <div>
-          <p className="text-[10px] uppercase tracking-[0.22em] text-faint mb-2">
-            Type
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            {PAIN_TYPE_OPTS.map((o) => {
-              const active = painType === o.value;
-              return (
-                <button
-                  key={o.value}
-                  type="button"
-                  onClick={() => setPainType(active ? null : o.value)}
-                  aria-pressed={active}
-                  className={
-                    'rounded-lg border px-2 py-2 text-left transition-colors ' +
-                    (active
-                      ? 'border-primary bg-primary/15 text-primary-hi'
-                      : 'border-border bg-bg hover:border-primary/40 text-text')
-                  }
-                >
-                  <span className="block text-xs font-medium">{o.label}</span>
-                  <span className="block text-[10px] text-faint mt-0.5">{o.hint}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="What does it feel like?"
-          autoFocus
-          rows={3}
-          className="w-full px-3 py-2 rounded-xl bg-bg border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-base transition-shadow placeholder:text-faint"
-        />
-        <div className="space-y-2">
-          <button
-            type="button"
-            disabled={!text.trim() || submitting}
-            onClick={() => onContinue(text.trim(), painType)}
-            className="w-full h-11 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors bg-primary hover:bg-primary-hi text-bg"
-          >
-            Continue with exercise
-          </button>
-          <button
-            type="button"
-            disabled={!text.trim() || submitting}
-            onClick={() => onSkip(text.trim(), painType)}
-            className="w-full h-11 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors bg-danger hover:bg-danger/90 text-bg"
-          >
-            Skip exercise
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="w-full h-11 rounded-xl border border-border text-sm font-medium text-text hover:bg-surface-2 transition-colors"
-          >
-            Cancel
-          </button>
+    <Sheet title={title} subtitle={subtitle} onClose={onCancel}>
+      <div>
+        <p className="text-[10px] uppercase tracking-[0.22em] text-faint mb-2">
+          Type
+        </p>
+        <div className="grid grid-cols-3 gap-2">
+          {PAIN_TYPE_OPTS.map((o) => {
+            const active = painType === o.value;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => setPainType(active ? null : o.value)}
+                aria-pressed={active}
+                className={
+                  'rounded-[var(--r-control)] border px-2 py-2 text-left transition-colors ' +
+                  (active
+                    ? 'border-primary bg-primary/15 text-primary-hi'
+                    : 'border-border bg-bg hover:border-primary/40 text-text')
+                }
+              >
+                <span className="block text-xs font-medium">{o.label}</span>
+                <span className="block text-[10px] text-faint mt-0.5">{o.hint}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
-    </div>
+
+      <TextareaField
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="What does it feel like?"
+        autoFocus
+        rows={3}
+        inputClassName="bg-bg"
+      />
+      <div className="space-y-2">
+        <Button
+          variant="primary"
+          className="w-full"
+          disabled={!text.trim() || submitting}
+          onClick={() => onContinue(text.trim(), painType)}
+        >
+          Continue with exercise
+        </Button>
+        <Button
+          variant="danger"
+          className="w-full"
+          disabled={!text.trim() || submitting}
+          onClick={() => onSkip(text.trim(), painType)}
+        >
+          Skip exercise
+        </Button>
+        <Button variant="ghost" className="w-full" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </Sheet>
   );
 }
 
@@ -571,46 +567,106 @@ export function ReasonModal({
 }) {
   const [text, setText] = useState('');
   return (
-    <div
-      className="fixed inset-0 z-50 bg-bg/85 backdrop-blur flex items-end sm:items-center justify-center p-4"
-      style={{ paddingBottom: 'max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))' }}
-    >
-      <div className="w-full max-w-sm bg-surface rounded-2xl border border-border p-5 space-y-4 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)]">
-        <h3 className="text-lg font-semibold">{title}</h3>
-        {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Reason"
-          autoFocus
-          rows={3}
-          className="w-full px-3 py-2 rounded-xl bg-bg border border-border focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 text-base transition-shadow placeholder:text-faint"
-        />
-        <div className="space-y-2">
-          {actions.map((a) => (
-            <button
-              key={a.label}
-              type="button"
-              disabled={!text.trim() || submitting}
-              onClick={() => a.onClick(text.trim())}
-              className={`w-full h-11 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors ${
-                a.tone === 'danger'
-                  ? 'bg-danger hover:bg-danger/90 text-bg'
-                  : 'bg-primary hover:bg-primary-hi text-bg'
-              }`}
-            >
-              {a.label}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={onCancel}
-            className="w-full h-11 rounded-xl border border-border text-sm font-medium text-text hover:bg-surface-2 transition-colors"
+    <Sheet title={title} subtitle={subtitle} onClose={onCancel}>
+      <TextareaField
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Reason"
+        autoFocus
+        rows={3}
+        inputClassName="bg-bg"
+      />
+      <div className="space-y-2">
+        {actions.map((a) => (
+          <Button
+            key={a.label}
+            variant={a.tone === 'danger' ? 'danger' : 'primary'}
+            className="w-full"
+            disabled={!text.trim() || submitting}
+            onClick={() => a.onClick(text.trim())}
           >
-            Cancel
-          </button>
-        </div>
+            {a.label}
+          </Button>
+        ))}
+        <Button variant="ghost" className="w-full" onClick={onCancel}>
+          Cancel
+        </Button>
       </div>
+    </Sheet>
+  );
+}
+
+/**
+ * The single safe exit for a session. Replaces the old footer where
+ * "Cancel workout" (destroys the session) sat 12px from "End workout"
+ * (finishes early) as two tiny text buttons — and replaces the native
+ * confirm() that guarded cancel. The sheet IS the confirmation.
+ */
+export function EndSessionSheet({
+  canFinish,
+  submitting,
+  onFinish,
+  onCancelWorkout,
+  onClose,
+}: {
+  /** True once at least one set is logged — finishing needs data to save. */
+  canFinish: boolean;
+  submitting: boolean;
+  onFinish: () => void;
+  onCancelWorkout: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet
+      title="End this session?"
+      subtitle={
+        canFinish
+          ? 'Ending saves everything you logged. Cancelling deletes this session.'
+          : 'Nothing is logged yet. Cancelling deletes this session.'
+      }
+      onClose={onClose}
+    >
+      <div className="space-y-2">
+        {canFinish && (
+          <Button
+            variant="primary"
+            className="w-full"
+            disabled={submitting}
+            onClick={onFinish}
+          >
+            End workout &amp; save
+          </Button>
+        )}
+        <Button
+          variant="dangerGhost"
+          className="w-full"
+          disabled={submitting}
+          onClick={onCancelWorkout}
+        >
+          Cancel workout — nothing saved
+        </Button>
+        <Button variant="ghost" className="w-full" onClick={onClose}>
+          Keep training
+        </Button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** Session footer: one calm entry point to the end-session sheet. */
+export function SessionFooter({
+  onOpenEndSheet,
+  trailing,
+}: {
+  onOpenEndSheet: () => void;
+  trailing?: ReactNode;
+}) {
+  return (
+    <div className="pt-3 mt-3 border-t border-border flex items-center justify-between gap-3">
+      <Button variant="textlink" onClick={onOpenEndSheet} className="text-faint">
+        End or cancel session…
+      </Button>
+      {trailing}
     </div>
   );
 }

@@ -122,6 +122,9 @@ select {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    /* Delays must go too — staggered reveals (load-in, editorial) would
+       otherwise leave content invisible for the full choreography time. */
+    animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
