@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
 
+import { Button, Sheet } from '@/components/ui';
+
 type Session = {
   id: string;
   createdAt: string;
@@ -30,14 +32,16 @@ export function SessionList({ sessions }: { sessions: Session[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Revoking the CURRENT session signs the user out — that one gets a
+  // confirmation sheet; other devices revoke directly.
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   async function revoke(id: string, isCurrent: boolean) {
-    if (isCurrent) {
-      const ok = window.confirm(
-        'This is your current session. Revoking it will sign you out — continue?',
-      );
-      if (!ok) return;
+    if (isCurrent && confirmId !== id) {
+      setConfirmId(id);
+      return;
     }
+    setConfirmId(null);
     setBusyId(id);
     setError(null);
     try {
@@ -103,6 +107,27 @@ export function SessionList({ sessions }: { sessions: Session[] }) {
           </li>
         ))}
       </ul>
+
+      {confirmId && (
+        <Sheet
+          title="Sign out this device?"
+          subtitle="This is your current session — revoking it signs you out here and sends you back to the PIN screen."
+          onClose={() => setConfirmId(null)}
+        >
+          <div className="space-y-2">
+            <Button
+              variant="danger"
+              className="w-full"
+              onClick={() => revoke(confirmId, true)}
+            >
+              Revoke &amp; sign out
+            </Button>
+            <Button variant="ghost" className="w-full" onClick={() => setConfirmId(null)}>
+              Keep session
+            </Button>
+          </div>
+        </Sheet>
+      )}
     </>
   );
 }

@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 
+import { toast } from '@/components/ui';
+
 export function SwitchToSelfButton() {
   const [busy, setBusy] = useState(false);
   return (
@@ -14,7 +16,7 @@ export function SwitchToSelfButton() {
           const res = await fetch('/api/coach/switch-to-self', { method: 'POST' });
           if (!res.ok) {
             const body = await res.json().catch(() => ({}));
-            alert(body.error ?? 'Switch failed');
+            toast(body.error ?? "Couldn't switch accounts — try again.", 'danger');
             return;
           }
           // Drop SW-cached coach pages so the next nav fetches client-side

@@ -1,9 +1,10 @@
 import Link from 'next/link';
-import { startOfWeek, formatISO, getISOWeek, getISOWeekYear } from 'date-fns';
+import { formatDistanceToNow, startOfWeek, formatISO, getISOWeek, getISOWeekYear } from 'date-fns';
 
 import { requireCoach } from '@/lib/coach-guard';
-import { listClientSummaries } from '@/lib/clients';
+import { listClientSummaries, type ClientSummary } from '@/lib/clients';
 import { db } from '@/lib/supabase';
+import { Badge, type BadgeTone } from '@/components/ui';
 import { LIVE_LOOKBACK_HOURS } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
@@ -19,7 +20,7 @@ export default async function CoachHome() {
   const weekStartIso = formatISO(weekStart, { representation: 'date' });
   const sinceIso = new Date(Date.now() - LIVE_LOOKBACK_MS).toISOString();
 
-  const [summaries, liveRes, doneRes] = await Promise.all([
+  const [summaries, liveRes, doneRes, alertsRes] = await Promise.all([
     listClientSummaries(),
     supa
       .from('workouts')
@@ -33,6 +34,10 @@ export default async function CoachHome() {
       .gte('week_start', weekStartIso)
       .not('completed_at', 'is', null)
       .eq('is_missed', false),
+    supa
+      .from('alerts')
+      .select('id', { count: 'exact', head: true })
+      .is('acknowledged_at', null),
   ]);
 
   const activeSummaries = summaries.filter((c) => c.active);
@@ -46,6 +51,16 @@ export default async function CoachHome() {
   const liveCount = liveRes.count ?? 0;
   const doneCount = doneRes.count ?? 0;
   const activeCount = activeSummaries.length;
+  const unackAlerts = alertsRes.count ?? 0;
+
+  // Triage: who needs the coach today. Pain outranks silence outranks
+  // schedule slippage; on_track clients stay out of the list entirely.
+  const ATTENTION_RANK = { pain: 0, inactive: 1, behind: 2 } as const;
+  const needsAttention = activeSummaries
+    .filter((c): c is ClientSummary & { status: keyof typeof ATTENTION_RANK } =>
+      c.status === 'pain' || c.status === 'inactive' || c.status === 'behind',
+    )
+    .sort((a, b) => ATTENTION_RANK[a.status] - ATTENTION_RANK[b.status]);
 
   const isoWeek = getISOWeek(now);
   const isoWeekYear = getISOWeekYear(now);
@@ -121,8 +136,86 @@ export default async function CoachHome() {
           delay={360}
         />
       </div>
+
+      {/* Triage — pain, gone-quiet, and behind-schedule clients, plus the
+          alert backlog. Previously this lived one tab away on /coach/alerts
+          and /coach/status; the home screen was stats-only. */}
+      <section
+        aria-label="Needs attention"
+        className="border-t border-border px-5 sm:px-8 py-6 editorial-reveal"
+        style={{ animationDelay: '440ms' }}
+      >
+        <div className="flex items-baseline justify-between gap-4 mb-1">
+          <p className="text-[10px] uppercase tracking-[0.28em] text-faint">
+            Needs attention
+          </p>
+          {unackAlerts > 0 && (
+            <Link
+              href="/coach/alerts"
+              prefetch={false}
+              className="text-[10px] uppercase tracking-[0.18em] text-warn hover:text-text transition-colors"
+            >
+              {unackAlerts} unread alert{unackAlerts === 1 ? '' : 's'} →
+            </Link>
+          )}
+        </div>
+
+        {needsAttention.length === 0 ? (
+          <p className="mt-3 text-sm text-muted">
+            Everyone&rsquo;s on track this week.
+          </p>
+        ) : (
+          <ul className="mt-2 divide-y divide-border">
+            {needsAttention.map((c) => (
+              <li key={c.id}>
+                <Link
+                  href={`/coach/clients/${c.id}`}
+                  prefetch={false}
+                  className="flex items-center justify-between gap-4 py-3 group"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-text truncate group-hover:text-primary-hi transition-colors">
+                      {c.name}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {attentionCaption(c)}
+                    </p>
+                  </div>
+                  <Badge tone={ATTENTION_TONE[c.status]}>
+                    {ATTENTION_LABEL[c.status]}
+                  </Badge>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </main>
   );
+}
+
+const ATTENTION_TONE: Record<'pain' | 'inactive' | 'behind', BadgeTone> = {
+  pain: 'danger',
+  inactive: 'neutral',
+  behind: 'warn',
+};
+
+const ATTENTION_LABEL: Record<'pain' | 'inactive' | 'behind', string> = {
+  pain: 'Pain',
+  inactive: 'Quiet',
+  behind: 'Behind',
+};
+
+function attentionCaption(c: ClientSummary): string {
+  if (c.status === 'pain') {
+    return `${c.unackPainCount} pain report${c.unackPainCount === 1 ? '' : 's'} to review`;
+  }
+  if (c.status === 'inactive') {
+    return c.lastActivityAt
+      ? `Last trained ${formatDistanceToNow(new Date(c.lastActivityAt), { addSuffix: true })}`
+      : 'No training logged yet';
+  }
+  return `${c.daysLoggedThisWeek} of ${c.weeklyDayTarget} days logged this week`;
 }
 
 function Quadrant(props: {

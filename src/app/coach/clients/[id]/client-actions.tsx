@@ -3,6 +3,10 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { Button, Sheet } from '@/components/ui';
+
+type ConfirmKind = 'pin' | 'active' | null;
+
 export function ClientActions({
   clientId,
   active,
@@ -19,6 +23,7 @@ export function ClientActions({
   const [busy, setBusy] = useState<string | null>(null);
   const [newPin, setNewPin] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<ConfirmKind>(null);
 
   async function setLogMode(next: 'sets' | 'best' | 'all') {
     if (next === logMode) return;
@@ -41,13 +46,9 @@ export function ClientActions({
     }
   }
 
+  // Confirmation happens in the sheets below; these execute directly.
   async function regenerate() {
-    if (
-      !confirm(
-        'Generate a new PIN? The old one stops working immediately and the client will need the new PIN to log in.',
-      )
-    )
-      return;
+    setConfirming(null);
     setBusy('pin');
     setError(null);
     try {
@@ -66,10 +67,7 @@ export function ClientActions({
   }
 
   async function setActive(next: boolean) {
-    if (
-      !confirm(next ? 'Reactivate this client?' : 'Deactivate this client? They will be locked out until reactivated.')
-    )
-      return;
+    setConfirming(null);
     setBusy('active');
     setError(null);
     try {
@@ -160,7 +158,7 @@ export function ClientActions({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <button
           type="button"
-          onClick={regenerate}
+          onClick={() => setConfirming('pin')}
           disabled={busy !== null || pending}
           className="rounded-lg border border-border bg-surface/40 hover:bg-surface hover:border-border-strong text-text px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50"
         >
@@ -184,7 +182,7 @@ export function ClientActions({
         </button>
         <button
           type="button"
-          onClick={() => setActive(!active)}
+          onClick={() => setConfirming('active')}
           disabled={busy !== null || pending}
           className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
             active
@@ -197,6 +195,48 @@ export function ClientActions({
       </div>
 
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+
+      {confirming === 'pin' && (
+        <Sheet
+          title="Generate a new PIN?"
+          subtitle="The current PIN stops working immediately. Share the new one with the client — it's shown once."
+          onClose={() => setConfirming(null)}
+        >
+          <div className="space-y-2">
+            <Button variant="primary" className="w-full" onClick={regenerate}>
+              Generate new PIN
+            </Button>
+            <Button variant="ghost" className="w-full" onClick={() => setConfirming(null)}>
+              Keep current PIN
+            </Button>
+          </div>
+        </Sheet>
+      )}
+
+      {confirming === 'active' && (
+        <Sheet
+          title={active ? 'Deactivate this client?' : 'Reactivate this client?'}
+          subtitle={
+            active
+              ? 'They are locked out until reactivated. Their data and history stay intact.'
+              : 'They can log in again with their existing PIN.'
+          }
+          onClose={() => setConfirming(null)}
+        >
+          <div className="space-y-2">
+            <Button
+              variant={active ? 'dangerGhost' : 'primary'}
+              className="w-full"
+              onClick={() => setActive(!active)}
+            >
+              {active ? 'Deactivate' : 'Reactivate'}
+            </Button>
+            <Button variant="ghost" className="w-full" onClick={() => setConfirming(null)}>
+              Never mind
+            </Button>
+          </div>
+        </Sheet>
+      )}
     </section>
   );
 }

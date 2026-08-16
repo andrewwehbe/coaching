@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { toast } from '@/components/ui';
+
 type SwitchKind = 'switch-to-coach' | 'switch-to-self' | null;
 
 export type HeaderMenuLink = {
@@ -91,7 +93,7 @@ export function HeaderMenu({
       const res = await fetch(url, { method: 'POST' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        alert(body.error ?? 'Switch failed');
+        toast(body.error ?? "Couldn't switch accounts — try again.", 'danger');
         return;
       }
       navigator.serviceWorker?.controller?.postMessage({ type: 'clear-cache' });
