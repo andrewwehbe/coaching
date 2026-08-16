@@ -1,7 +1,9 @@
 @import "tailwindcss";
-/* Boska is self-hosted via next/font/local in layout.tsx (--font-boska).
-   The old Fontshare CDN @import was render-blocking and unavailable
-   offline in the installed PWA. */
+/* Display face: the app's look is the ui-serif/Georgia fallback below —
+   the historical Fontshare @import for Boska never actually applied (it
+   sat after other rules, which browsers ignore), so the fallback IS the
+   established look. Deliberately kept (per Andrew, 2026-08-16); don't
+   "fix" this by self-hosting Boska again. */
 
 :root {
   --bg: #06090a;
@@ -61,7 +63,7 @@
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
-  --font-display: var(--font-boska), 'Boska', ui-serif, Georgia, serif;
+  --font-display: 'Boska', ui-serif, Georgia, serif;
 
   --radius-card: var(--r-card);
   --radius-control: var(--r-control);

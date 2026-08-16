@@ -38,7 +38,7 @@
   justify-content: space-between;
   gap: 12px;
   opacity: 0;
-  animation: loadinFade 400ms 40ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: loadinFade 600ms 80ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 .loadin-eyebrow {
   font-size: 10px;
@@ -48,8 +48,7 @@
   margin: 0;
 }
 .loadin-greeting {
-  /* Self-hosted Boska — --font-boska is set on <html> by next/font/local. */
-  font-family: var(--font-boska, ui-serif), serif;
+  font-family: 'Boska', ui-serif, serif;
   font-weight: 500;
   font-size: 22px;
   line-height: 1;
@@ -66,7 +65,7 @@
   margin-top: auto;
   padding-bottom: 6px;
   opacity: 0;
-  animation: loadinFade 400ms 100ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: loadinFade 600ms 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 .loadin-week p {
   margin: 0;
@@ -84,7 +83,7 @@
   border-bottom: 1px solid rgba(251, 191, 36, 0.25);
   text-align: center;
   opacity: 0;
-  animation: loadinFade 400ms 160ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: loadinFade 600ms 360ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 .loadin-warn p {
   margin: 0;
@@ -110,7 +109,7 @@
   font-weight: 600;
   text-decoration: none;
   opacity: 0;
-  animation: loadinFade 400ms 200ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: loadinFade 600ms 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
   transition: background 160ms, transform 100ms;
 }
 .loadin-checkin:active { transform: translateY(1px); }
@@ -157,7 +156,7 @@
   filter: blur(10px);
   pointer-events: none;
   opacity: 0;
-  animation: loadinFloorGlow 900ms var(--floor-glow-delay, 1000ms) cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  animation: loadinFloorGlow 1100ms var(--floor-glow-delay, 2550ms) cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
 }
 .loadin-flash {
   /* impact flashes — animation list set inline (one per plate impact) */
@@ -198,7 +197,7 @@
   gap: 12px;
   opacity: 0;
   transform: translateY(8px);
-  animation: loadinRisingFade 400ms 1100ms cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  animation: loadinRisingFade 600ms 3350ms cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
   box-shadow: 0 14px 40px -14px rgba(34, 197, 94, 0.7);
   transition: background 160ms, transform 100ms;
 }
@@ -219,7 +218,7 @@
 .loadin-plate {
   opacity: 0;
   will-change: transform, opacity;
-  animation: loadinDropBig 420ms cubic-bezier(0.6, 0, 0.95, 0.35) forwards;
+  animation: loadinDropBig 850ms cubic-bezier(0.6, 0, 0.95, 0.35) forwards;
 }
 
 /* ==============================================================

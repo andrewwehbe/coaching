@@ -35,14 +35,13 @@ type Suggested = {
 const SLEEVE_TOP = 8;
 const SLEEVE_BOTTOM = 600;
 const GAP = 8;
-// Compressed timeline: for a 5-day program the last plate lands at
-// ~980ms and the CTA is tappable at ~1.1s. The old choreography
-// (500 + 600/plate + 850 drop) parked the CTA ~3.9s after paint,
-// every single visit.
-const BASE_DELAY = 120;
-const STAGGER = 110;
-const DROP_DURATION = 420;
-const BUTTON_BUFFER = 120;
+// Original choreography — deliberate, weighty plate drops (per Andrew).
+// The cost of the long timeline only bites once per day: same-day
+// revisits skip the animation entirely (see the sessionStorage check).
+const BASE_DELAY = 500;
+const STAGGER = 600;
+const DROP_DURATION = 850;
+const BUTTON_BUFFER = 200;
 
 // SVG canvas the barbell art is drawn in; the DOM overlay maps its
 // coordinates through the measured content box (see below).
