@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { requireCoach } from '@/lib/coach-guard';
 import { HeaderMenu } from '@/components/header-menu';
+import { PushPrompt } from '@/components/push-prompt';
 import { linkForCoach } from '@/lib/coach-link';
 import { CoachNav } from './coach-nav';
 
@@ -29,6 +30,13 @@ export default async function CoachLayout({ children }: { children: React.ReactN
           <CoachNav />
         </div>
       </header>
+      {/* Push enrollment for pain / missed-workout / check-in alerts. The
+          component was built but never mounted anywhere, so coaches were
+          never asked. empty:hidden collapses the wrapper when it renders
+          null (already granted/denied/dismissed). */}
+      <div className="mx-auto max-w-5xl w-full px-5 sm:px-8 pt-4 empty:hidden">
+        <PushPrompt />
+      </div>
       {children}
     </div>
   );

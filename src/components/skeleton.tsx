@@ -6,7 +6,7 @@
 export function Skeleton({ className = '' }: { className?: string }) {
   return (
     <div
-      className={`animate-pulse rounded-md bg-surface/60 border border-border/40 ${className}`}
+      className={`animate-pulse rounded-[var(--r-control)] bg-surface/60 border border-border/40 ${className}`}
     />
   );
 }

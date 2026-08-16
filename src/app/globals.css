@@ -1,5 +1,7 @@
 @import "tailwindcss";
-@import url('https://api.fontshare.com/v2/css?f[]=boska@9,5,4&display=swap');
+/* Boska is self-hosted via next/font/local in layout.tsx (--font-boska).
+   The old Fontshare CDN @import was render-blocking and unavailable
+   offline in the installed PWA. */
 
 :root {
   --bg: #06090a;
@@ -10,7 +12,10 @@
   /* Slightly warmer near-white, more print-like than #ecf2ee. */
   --text: #f0eee8;
   --muted: #8a9b94;
-  --faint: #586862;
+  /* Floor of the text ramp. Was #586862 (~3.4:1 on --bg — a WCAG AA fail
+     at the 9–11px sizes it's used at); lifted to ~4.6:1 while keeping the
+     same green-gray hue so the ramp still reads as one family. */
+  --faint: #6b7d76;
 
   --primary: #22c55e;
   --primary-hi: #4ade80;
@@ -24,6 +29,12 @@
 
   --warn: #fbbf24;
   --danger: #f87171;
+
+  /* Radius scale — exactly two radii (plus the coach chip's near-flat).
+     Client surfaces drifted across sm/md/lg/xl/2xl; new code uses these. */
+  --r-card: 1rem;      /* cards, sheets, big CTAs (rounded-2xl) */
+  --r-control: 0.75rem; /* inputs, buttons, list rows (rounded-xl) */
+  --r-flat: 2px;        /* coach editorial chips only (rounded-sm) */
 }
 
 @theme inline {
@@ -50,7 +61,11 @@
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
-  --font-display: 'Boska', ui-serif, Georgia, serif;
+  --font-display: var(--font-boska), 'Boska', ui-serif, Georgia, serif;
+
+  --radius-card: var(--r-card);
+  --radius-control: var(--r-control);
+  --radius-flat: var(--r-flat);
 }
 
 html,
@@ -88,6 +103,29 @@ input,
 textarea,
 select {
   font-size: max(16px, 1em);
+}
+
+/* Keyboard focus must be visible everywhere. Inputs already carry their
+   own focus ring classes; this covers buttons, links, and role=button,
+   which previously had none. :focus-visible keeps taps/clicks clean. */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Reduced motion: collapse the app's decorative animation (editorial
+   reveal, pulses, PR confetti, load-in choreography) to near-instant.
+   0.01ms instead of `none` so animation-end handlers still fire. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Buttons feel sluggish in mobile Safari because of the legacy 300ms

@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 import { SwRegister } from '@/components/sw-register';
 import { IosInstallHint } from '@/components/ios-install-hint';
+import { Toaster } from '@/components/ui';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -11,6 +13,15 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
+});
+// Boska (ITF/Fontshare, free license) self-hosted as a single variable
+// file — the old Fontshare CDN @import was render-blocking and missing
+// offline in the installed PWA.
+const boska = localFont({
+  src: './fonts/Boska-Variable.woff2',
+  variable: '--font-boska',
+  weight: '200 900',
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
@@ -37,8 +48,9 @@ export const viewport: Viewport = {
   themeColor: '#06090a',
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // Pinch zoom stays enabled (WCAG 1.4.4). The old maximumScale:1 +
+  // userScalable:false blocked it; the 16px input floor in globals.css is
+  // what actually prevents iOS focus-zoom, so nothing regresses.
   viewportFit: 'cover',
 };
 
@@ -46,11 +58,12 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${boska.variable} h-full antialiased`}>
       <body className="min-h-full bg-bg text-text flex flex-col font-sans">
         {children}
         <SwRegister />
         <IosInstallHint />
+        <Toaster />
       </body>
     </html>
   );

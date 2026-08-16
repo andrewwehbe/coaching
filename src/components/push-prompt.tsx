@@ -76,7 +76,7 @@ export function PushPrompt() {
   if (!show) return null;
 
   return (
-    <div className="mb-5 rounded-2xl border border-accent/30 bg-accent/8 px-4 py-3 flex items-center gap-3">
+    <div className="rounded-[var(--r-card)] border border-accent/30 bg-accent/8 px-4 py-3 flex items-center gap-3">
       <div className="flex-1 min-w-0">
         <p className="text-sm text-text font-medium">Get notified</p>
         <p className="text-xs text-muted mt-0.5">Pain reports, missed workouts, and check-ins.</p>

@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@/components/ui';
+
 export const dynamic = 'force-static';
 
 export default function OfflinePage() {
@@ -17,13 +19,9 @@ export default function OfflinePage() {
             You&apos;re offline. Sets you log will sync the moment you&apos;re back online.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="w-full h-12 rounded-2xl bg-primary hover:bg-primary-hi text-bg font-semibold transition-colors"
-        >
+        <Button variant="cta" onClick={() => window.location.reload()}>
           Try again
-        </button>
+        </Button>
       </div>
     </main>
   );

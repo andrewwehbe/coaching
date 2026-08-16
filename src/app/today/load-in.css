@@ -46,7 +46,8 @@
   margin: 0;
 }
 .loadin-greeting {
-  font-family: 'Boska', ui-serif, serif;
+  /* Self-hosted Boska — --font-boska is set on <html> by next/font/local. */
+  font-family: var(--font-boska, ui-serif), serif;
   font-weight: 500;
   font-size: 22px;
   line-height: 1;
