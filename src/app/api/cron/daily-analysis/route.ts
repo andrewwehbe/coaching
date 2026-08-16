@@ -44,6 +44,10 @@ import {
   type Unit,
 } from '@/lib/signals/progression';
 import {
+  loadLogsAndSets,
+  loadSessionInputs,
+} from '@/lib/signals/load-session-inputs';
+import {
   evaluateAnomalies,
   type DetectedAnomaly,
 } from '@/lib/signals/anomaly';
@@ -127,6 +131,18 @@ async function handle(req: Request): Promise<NextResponse> {
       }
     }),
   );
+
+  // Refresh the weekly_exposures materialization (0040). The migration
+  // did the full backfill; nightly we rebuild a trailing window so late
+  // edits and yesterday's sessions land. Best-effort.
+  const { error: refreshErr } = await supa.rpc('refresh_weekly_exposures', {
+    p_since: new Date(Date.now() - 21 * 24 * 3600 * 1000)
+      .toISOString()
+      .slice(0, 10),
+  });
+  if (refreshErr) {
+    log.error('cron.daily.weekly_exposures_refresh_failed', refreshErr);
+  }
 
   // Prune dead push subscriptions. Two flavors:
   //   - never delivered AND created >30d ago → stale install
@@ -309,74 +325,31 @@ async function analyzeClient(clientId: string) {
   // uses). The plateau classifier only reads recent weekly exposures;
   // unbounded, this cron re-scanned every client's lifetime history
   // nightly and its runtime grew without limit.
+  // Shared gatherer (sets carry unit + rir for the kg normalisation and
+  // the high_rir_stall branch). Completed workouts only — this also fixes
+  // the old drift where this cron, unlike suggestions.ts, counted sets
+  // from in-progress workouts.
   const lookbackStart = new Date(
     Date.now() - ANALYSIS_LOOKBACK_WEEKS * 7 * 24 * 60 * 60_000,
-  ).toISOString();
-  const { data: workouts } = await supa
-    .from('workouts')
-    .select('id,started_at')
-    .eq('client_id', clientId)
-    .gte('started_at', lookbackStart);
-
-  const workoutIds = (workouts ?? []).map((w) => w.id);
-  if (workoutIds.length === 0) {
+  );
+  const { workouts, logs: logsList, setsByLog } = await loadSessionInputs(
+    [clientId],
+    lookbackStart,
+  );
+  if (workouts.length === 0 || logsList.length === 0) {
     return { exercises_processed: 0, escalations: 0, swap_proposals_opened: 0 };
   }
   const workoutById = new Map<string, { id: string; started_at: string }>(
-    (workouts ?? []).map((w) => [w.id, w])
+    workouts.map((w) => [w.id, w])
   );
 
-  const { data: logs } = await supa
-    .from('exercise_logs')
-    .select('id,workout_id,exercise_id')
-    .in('workout_id', workoutIds);
-
-  const logsList = logs ?? [];
-  const logIds = logsList.map((l) => l.id);
-  const exerciseIds = Array.from(new Set(logsList.map((l) => l.exercise_id)));
-
-  if (logIds.length === 0 || exerciseIds.length === 0) {
-    return { exercises_processed: 0, escalations: 0, swap_proposals_opened: 0 };
+  // name_key per exercise comes nested on the gathered logs.
+  const nameKeyByExId = new Map<string, string>();
+  for (const l of logsList) {
+    const exRaw = l.exercises as unknown;
+    const ex = (Array.isArray(exRaw) ? exRaw[0] : exRaw) as { name_key?: string } | null;
+    if (ex?.name_key) nameKeyByExId.set(l.exercise_id, ex.name_key);
   }
-
-  // Stage 4.6: fetch unit + rir so the SessionMetric series carries
-  // them through. unit feeds buildProgressionSeries's kg normalisation
-  // (clients sometimes mix kg/lb on the same lift); rir feeds the
-  // high_rir_stall branch of classifyExercisePlateau, which routes
-  // the new 'effort_gap' alert type added in migration 0025.
-  const { data: setsRows } = await supa
-    .from('sets')
-    .select('exercise_log_id,weight,reps,rir,unit')
-    .in('exercise_log_id', logIds);
-
-  const setsByLog = new Map<
-    string,
-    {
-      weight: number | null;
-      reps: number | null;
-      rir: number | null;
-      unit: Unit;
-    }[]
-  >();
-  for (const s of setsRows ?? []) {
-    const arr = setsByLog.get(s.exercise_log_id) ?? [];
-    arr.push({
-      weight: s.weight === null ? null : Number(s.weight),
-      reps: s.reps === null ? null : Number(s.reps),
-      rir: s.rir,
-      unit: s.unit as Unit,
-    });
-    setsByLog.set(s.exercise_log_id, arr);
-  }
-
-  const { data: exercises } = await supa
-    .from('exercises')
-    .select('id,name_key')
-    .in('id', exerciseIds);
-
-  const nameKeyByExId = new Map<string, string>(
-    (exercises ?? []).map((e) => [e.id, e.name_key])
-  );
 
   // Build per-name_key SessionInput[] for the new classifier path.
   const sessionsByNameKey = new Map<string, SessionInput[]>();
@@ -648,35 +621,12 @@ async function analyzeAnomalies(args: {
     at: priorAt,
   });
 
-  // Build perExerciseSeries within the 90d window.
+  // Build perExerciseSeries within the 90d window (shared gatherer).
   const workoutIds = (recentWorkouts ?? []).map((w) => w.id as string);
   const perExerciseSeries = new Map<string, ReturnType<typeof buildProgressionSeries>>();
   if (workoutIds.length > 0) {
-    const { data: logsRecent } = await supa
-      .from('exercise_logs')
-      .select('id, workout_id, exercise_id')
-      .in('workout_id', workoutIds);
-    const logRows = logsRecent ?? [];
-    const logIds = logRows.map((l) => l.id as string);
-    if (logIds.length > 0) {
-      const { data: setsRecent } = await supa
-        .from('sets')
-        .select('exercise_log_id, weight, reps, rir, unit')
-        .in('exercise_log_id', logIds);
-      const setsByLog = new Map<
-        string,
-        { weight: number | null; reps: number | null; rir: number | null; unit: Unit }[]
-      >();
-      for (const s of setsRecent ?? []) {
-        const arr = setsByLog.get(s.exercise_log_id as string) ?? [];
-        arr.push({
-          weight: s.weight === null ? null : Number(s.weight),
-          reps: s.reps === null ? null : Number(s.reps),
-          rir: s.rir,
-          unit: s.unit as Unit,
-        });
-        setsByLog.set(s.exercise_log_id as string, arr);
-      }
+    const { logs: logRows, setsByLog } = await loadLogsAndSets(workoutIds);
+    {
       const workoutStartedAt = new Map<string, string>(
         (recentWorkouts ?? []).map((w) => [w.id as string, w.started_at as string]),
       );

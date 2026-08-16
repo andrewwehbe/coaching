@@ -41,6 +41,7 @@ import {
   type ContextDirective,
 } from './signals/client-context';
 import { fetchActiveContextsForClients } from './client-context-store';
+import { loadSessionInputs } from './signals/load-session-inputs';
 import { computeProgramContext } from './program-week';
 import {
   computeClientRirDrift,
@@ -222,74 +223,33 @@ export async function buildSuggestionsByClient(
     programByClient.set(p.client_id, p);
   }
 
-  // Fetch completed workouts for these clients (id + when + day_id),
-  // bounded to the analysis lookback. Unbounded, this scanned lifetime
-  // history on every call and grew forever; every downstream window
-  // (plateau, adherence, pain-recurrence, split rotation) fits inside
-  // ANALYSIS_LOOKBACK_WEEKS. Days last trained before the bound fall out
-  // of the skipped-day analysis (they read as "never trained"), which is
-  // fine — the archive suggestion fires at SKIPPED_ARCHIVE_WEEKS anyway.
+  // Completed workouts + logs + sets via the shared gatherer, bounded to
+  // the analysis lookback. Unbounded, this scanned lifetime history on
+  // every call; every downstream window (plateau, adherence,
+  // pain-recurrence, split rotation) fits inside ANALYSIS_LOOKBACK_WEEKS.
+  // Days last trained before the bound fall out of the skipped-day
+  // analysis (they read as "never trained"), which is fine — the archive
+  // suggestion fires at SKIPPED_ARCHIVE_WEEKS anyway.
   const lookbackStart = new Date(
     at.getTime() - ANALYSIS_LOOKBACK_WEEKS * 7 * 24 * 60 * 60_000,
-  ).toISOString();
-  const { data: workouts } = await supa
-    .from('workouts')
-    .select('id, client_id, day_id, started_at, completed_at, week_start')
-    .in('client_id', clientIds)
-    .not('completed_at', 'is', null)
-    .gte('started_at', lookbackStart)
-    .order('started_at', { ascending: true });
+  );
+  const { workouts, logs, setsByLog } = await loadSessionInputs(
+    clientIds,
+    lookbackStart,
+  );
 
   const completedWorkoutsByClient = new Map<
     string,
     { id: string; day_id: string; started_at: string; week_start: string }[]
   >();
-  for (const w of workouts ?? []) {
+  for (const w of workouts) {
     const arr = completedWorkoutsByClient.get(w.client_id) ?? [];
     arr.push({ id: w.id, day_id: w.day_id, started_at: w.started_at, week_start: w.week_start });
     completedWorkoutsByClient.set(w.client_id, arr);
   }
 
-  const allWorkoutIds = (workouts ?? []).map((w) => w.id);
-
-  // Fetch exercise_logs (with name + sets) for ALL completed workouts in one batch.
-  const { data: logs } = allWorkoutIds.length
-    ? await supa
-        .from('exercise_logs')
-        .select('id, workout_id, exercise_id, pain_reason, pain_type, client_note, exercises(name, name_key)')
-        .in('workout_id', allWorkoutIds)
-    : { data: [] as Array<{ id: string; workout_id: string; exercise_id: string; pain_reason: string | null; pain_type: string | null; client_note: string | null; exercises: unknown }> };
-
-  const logIds = (logs ?? []).map((l) => l.id);
-  const { data: sets } = logIds.length
-    ? await supa
-        .from('sets')
-        .select('exercise_log_id, weight, reps, rir, unit')
-        .in('exercise_log_id', logIds)
-    : { data: [] as Array<{ exercise_log_id: string; weight: number | string | null; reps: number | null; rir: number | null; unit: 'kg' | 'lb' | null }> };
-
-  const setsByLog = new Map<
-    string,
-    {
-      weight: number | null;
-      reps: number | null;
-      rir: number | null;
-      unit: 'kg' | 'lb' | null;
-    }[]
-  >();
-  for (const s of sets ?? []) {
-    const arr = setsByLog.get(s.exercise_log_id) ?? [];
-    arr.push({
-      weight: s.weight === null ? null : Number(s.weight),
-      reps: s.reps === null ? null : s.reps,
-      rir: s.rir,
-      unit: s.unit,
-    });
-    setsByLog.set(s.exercise_log_id, arr);
-  }
-
   const workoutToClient = new Map<string, string>();
-  for (const w of workouts ?? []) workoutToClient.set(w.id, w.client_id);
+  for (const w of workouts) workoutToClient.set(w.id, w.client_id);
 
   for (const cid of clientIds) result.set(cid, []);
 

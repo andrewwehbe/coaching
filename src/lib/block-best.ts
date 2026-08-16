@@ -85,6 +85,38 @@ export async function loadBlockBests(
 ): Promise<Map<string, Best>> {
   if (!programId || nameKeys.length === 0) return new Map();
 
+  // Fast path: get_block_bests (0040) does the whole chain in ONE round
+  // trip with identical semantics — this runs on every workout-screen
+  // open, the hottest client path. Falls through to the legacy multi-query
+  // version if the function isn't deployed (e.g. a local DB behind on
+  // migrations).
+  try {
+    const { data, error } = await supa.rpc('get_block_bests', {
+      p_client_id: clientId,
+      p_program_id: programId,
+      p_name_keys: nameKeys,
+    });
+    if (!error && Array.isArray(data)) {
+      const out = new Map<string, Best>();
+      for (const r of data as Array<{
+        name_key: string;
+        weight: number | string | null;
+        unit: string | null;
+        reps: number | null;
+      }>) {
+        if (r.weight == null || r.reps == null) continue;
+        out.set(r.name_key, {
+          weight: Number(r.weight),
+          unit: r.unit,
+          reps: r.reps,
+        });
+      }
+      return out;
+    }
+  } catch {
+    /* fall through to the legacy path */
+  }
+
   try {
     // Block start: training_start_at (mid-cycle transfer) else uploaded_at.
     const { data: prog } = await supa

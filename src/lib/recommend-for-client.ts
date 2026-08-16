@@ -37,8 +37,8 @@ import {
   buildProgressionSeries,
   type SessionInput,
   type SessionMetric,
-  type Unit,
 } from './signals/progression';
+import { loadLogsAndSets } from './signals/load-session-inputs';
 import {
   decideRecommendation,
   type MuscleGroup,
@@ -311,47 +311,11 @@ export async function loadRecommendation(
   const sessionInputsByExercise = new Map<string, SessionInput[]>();
   const rirExposuresByExercise = new Map<string, RirExposure[]>();
   if (workoutIds.length > 0) {
-    const { data: logs } = await supa
-      .from('exercise_logs')
-      .select('id, workout_id, exercise_id')
-      .in('workout_id', workoutIds);
-
-    const logIds = (logs ?? []).map((l) => l.id);
-    const { data: sets } = logIds.length
-      ? await supa
-          .from('sets')
-          .select('exercise_log_id, weight, reps, rir, unit')
-          .in('exercise_log_id', logIds)
-      : {
-          data: [] as Array<{
-            exercise_log_id: string;
-            weight: number | string | null;
-            reps: number | null;
-            rir: number | null;
-            unit: 'kg' | 'lb' | null;
-          }>,
-        };
-    const setsByLog = new Map<
-      string,
-      {
-        weight: number | null;
-        reps: number | null;
-        rir: number | null;
-        unit: Unit;
-      }[]
-    >();
-    for (const s of sets ?? []) {
-      const arr = setsByLog.get(s.exercise_log_id) ?? [];
-      arr.push({
-        weight: s.weight === null ? null : Number(s.weight),
-        reps: s.reps === null ? null : s.reps,
-        rir: s.rir,
-        unit: s.unit,
-      });
-      setsByLog.set(s.exercise_log_id, arr);
-    }
+    // Shared gatherer — same fetch plumbing as suggestions.ts and the
+    // daily-analysis cron (previously re-implemented in each).
+    const { logs, setsByLog } = await loadLogsAndSets(workoutIds);
     const workoutById = new Map((workouts ?? []).map((w) => [w.id, w]));
-    for (const l of logs ?? []) {
+    for (const l of logs) {
       const w = workoutById.get(l.workout_id);
       if (!w) continue;
       const setsForLog = setsByLog.get(l.id) ?? [];
