@@ -1,0 +1,272 @@
+{
+  "name": "Ralf",
+  "greeting_name": "Ralf",
+  "weekly_day_target": 4,
+  "body_weight_freq": "weekly",
+  "photo_check_in_enabled": false,
+  "meal_plan_enabled": false,
+  "equipment": "full_gym",
+  "source_filename": "Ralf - Posterior/Anterior A-B, common machines (coach build 2026-08-31)",
+  "days": [
+    {
+      "label": "Day 1 — Posterior A",
+      "exercises": [
+        {
+          "name": "Barbell SLDL",
+          "prescription_raw": "2x4-6 @4 RIR",
+          "muscle_group": "hamstrings",
+          "coach_note": "Hinge at the hips, bar stays close to the legs, stop when the hamstrings are fully stretched. Same weight both sets."
+        },
+        {
+          "name": "Lying Hamstring Curl",
+          "prescription_raw": "3x8-10 @3 RIR",
+          "muscle_group": "hamstrings",
+          "coach_note": "Hips stay pinned to the pad, get full range. If there is no lying curl, use the seated one."
+        },
+        {
+          "name": "Close Grip Lat Pulldown",
+          "prescription_raw": "3x6-8 @3 RIR",
+          "muscle_group": "back",
+          "coach_note": "V-handle or close neutral grip. Dont lean back alot, keep forearms vertically straight."
+        },
+        {
+          "name": "Chest Supported Dumbbell Row",
+          "prescription_raw": "3x6-8 @3 RIR",
+          "muscle_group": "back",
+          "coach_note": "Incline bench set to about 30-45 degrees, chest on the pad. Elbows tucked, pull to the hips."
+        },
+        {
+          "name": "Hip Abduction Machine",
+          "prescription_raw": "2x12-15 @3 RIR",
+          "muscle_group": "glutes",
+          "coach_note": "Ensure full range of motion on all reps, sit upright"
+        },
+        {
+          "name": "Hip Adduction Machine",
+          "prescription_raw": "2x12-15 @3 RIR",
+          "muscle_group": "other",
+          "coach_note": "Sit upright, full range on every rep, control the opening."
+        },
+        {
+          "name": "Cable Lateral Raise",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "shoulders",
+          "coach_note": "Stay stable, drive elbows up, minimize shrugging"
+        },
+        {
+          "name": "Reverse Pec Deck",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "shoulders",
+          "coach_note": "Face the pad, arms slightly bent, lead with the elbows. Light weight, feel it in the rear delts not the traps."
+        },
+        {
+          "name": "Dumbbell Calf Raise",
+          "prescription_raw": "3x8-10 @3 RIR",
+          "muscle_group": "calves",
+          "coach_note": "Balls of the feet on a step or plate, dumbbell in hand. Full stretch at the bottom, pause, drive up."
+        },
+        {
+          "name": "Ab Curl Machine",
+          "prescription_raw": "3x8-10 @3 RIR",
+          "muscle_group": "abs",
+          "coach_note": "If the gym has no ab machine, do cable crunches on the rope instead."
+        }
+      ]
+    },
+    {
+      "label": "Day 2 — Anterior A",
+      "exercises": [
+        {
+          "name": "Machine Chest Press",
+          "prescription_raw": "3x4-6 @4 RIR",
+          "muscle_group": "chest",
+          "coach_note": "Handles level with mid chest. Full stretch at the back, extend elbows at the front."
+        },
+        {
+          "name": "Mid Chest Cable Fly",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "chest",
+          "coach_note": "Pulleys at shoulder height. Slight elbow bend held constant, bring the hands together in front of the chest."
+        },
+        {
+          "name": "Smith Machine Squat",
+          "prescription_raw": "3x6-8 @3 RIR",
+          "muscle_group": "quads",
+          "coach_note": "Feet slightly forward of the bar, heels down. Drive through whole foot, go as deep as you can with the heels down."
+        },
+        {
+          "name": "Leg Extension",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "quads",
+          "coach_note": "Pull hips down into seat, extend fully and go all the way down"
+        },
+        {
+          "name": "Dumbbell Shoulder Press",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "shoulders",
+          "coach_note": "Seated, back supported. Dumbbells start at ear level, press to lockout."
+        },
+        {
+          "name": "Dumbbell Lateral Raise",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "shoulders",
+          "coach_note": "Stay stable, drive elbows up and minimize shrugging"
+        },
+        {
+          "name": "Overhead Dumbbell Tricep Extension",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "triceps",
+          "coach_note": "Both hands on one dumbbell. Get a full stretch at the bottom, elbows pointing forward."
+        },
+        {
+          "name": "Straight Bar Tricep Push Down",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "triceps",
+          "coach_note": "Elbows fixed at the sides, lock out fully at the bottom."
+        },
+        {
+          "name": "EZ Bar Preacher Curl",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "biceps",
+          "coach_note": "Ensure elbow stays fixed, go all the way down"
+        },
+        {
+          "name": "Standing Dumbbell Curl",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "biceps",
+          "coach_note": "Elbows stay at the sides, no swinging, full range at the bottom."
+        }
+      ]
+    },
+    {
+      "label": "Day 3 — Posterior B",
+      "exercises": [
+        {
+          "name": "Barbell SLDL",
+          "prescription_raw": "2x4-6 @4 RIR",
+          "muscle_group": "hamstrings",
+          "coach_note": "Hinge at the hips, bar stays close to the legs, stop when the hamstrings are fully stretched. Same weight both sets."
+        },
+        {
+          "name": "Lying Hamstring Curl",
+          "prescription_raw": "3x8-10 @3 RIR",
+          "muscle_group": "hamstrings",
+          "coach_note": "Hips stay pinned to the pad, get full range. If there is no lying curl, use the seated one."
+        },
+        {
+          "name": "Close Grip Lat Pulldown",
+          "prescription_raw": "3x6-8 @3 RIR",
+          "muscle_group": "back",
+          "coach_note": "V-handle or close neutral grip. Dont lean back alot, keep forearms vertically straight."
+        },
+        {
+          "name": "Chest Supported Dumbbell Row",
+          "prescription_raw": "3x6-8 @3 RIR",
+          "muscle_group": "back",
+          "coach_note": "Incline bench set to about 30-45 degrees, chest on the pad. Elbows tucked, pull to the hips."
+        },
+        {
+          "name": "Hip Abduction Machine",
+          "prescription_raw": "2x12-15 @3 RIR",
+          "muscle_group": "glutes",
+          "coach_note": "Ensure full range of motion on all reps, sit upright"
+        },
+        {
+          "name": "Hip Adduction Machine",
+          "prescription_raw": "2x12-15 @3 RIR",
+          "muscle_group": "other",
+          "coach_note": "Sit upright, full range on every rep, control the opening."
+        },
+        {
+          "name": "Cable Lateral Raise",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "shoulders",
+          "coach_note": "Stay stable, drive elbows up, minimize shrugging"
+        },
+        {
+          "name": "Reverse Pec Deck",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "shoulders",
+          "coach_note": "Face the pad, arms slightly bent, lead with the elbows. Light weight, feel it in the rear delts not the traps."
+        },
+        {
+          "name": "Dumbbell Calf Raise",
+          "prescription_raw": "3x8-10 @3 RIR",
+          "muscle_group": "calves",
+          "coach_note": "Balls of the feet on a step or plate, dumbbell in hand. Full stretch at the bottom, pause, drive up."
+        },
+        {
+          "name": "Ab Curl Machine",
+          "prescription_raw": "3x8-10 @3 RIR",
+          "muscle_group": "abs",
+          "coach_note": "If the gym has no ab machine, do cable crunches on the rope instead."
+        }
+      ]
+    },
+    {
+      "label": "Day 4 — Anterior B",
+      "exercises": [
+        {
+          "name": "Machine Chest Press",
+          "prescription_raw": "3x4-6 @4 RIR",
+          "muscle_group": "chest",
+          "coach_note": "Handles level with mid chest. Full stretch at the back, extend elbows at the front."
+        },
+        {
+          "name": "Mid Chest Cable Fly",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "chest",
+          "coach_note": "Pulleys at shoulder height. Slight elbow bend held constant, bring the hands together in front of the chest."
+        },
+        {
+          "name": "Smith Machine Squat",
+          "prescription_raw": "3x6-8 @3 RIR",
+          "muscle_group": "quads",
+          "coach_note": "Feet slightly forward of the bar, heels down. Drive through whole foot, go as deep as you can with the heels down."
+        },
+        {
+          "name": "Leg Extension",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "quads",
+          "coach_note": "Pull hips down into seat, extend fully and go all the way down"
+        },
+        {
+          "name": "Dumbbell Shoulder Press",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "shoulders",
+          "coach_note": "Seated, back supported. Dumbbells start at ear level, press to lockout."
+        },
+        {
+          "name": "Dumbbell Lateral Raise",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "shoulders",
+          "coach_note": "Stay stable, drive elbows up and minimize shrugging"
+        },
+        {
+          "name": "Overhead Dumbbell Tricep Extension",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "triceps",
+          "coach_note": "Both hands on one dumbbell. Get a full stretch at the bottom, elbows pointing forward."
+        },
+        {
+          "name": "Straight Bar Tricep Push Down",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "triceps",
+          "coach_note": "Elbows fixed at the sides, lock out fully at the bottom."
+        },
+        {
+          "name": "EZ Bar Preacher Curl",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "biceps",
+          "coach_note": "Ensure elbow stays fixed, go all the way down"
+        },
+        {
+          "name": "Standing Dumbbell Curl",
+          "prescription_raw": "2x8-10 @3 RIR",
+          "muscle_group": "biceps",
+          "coach_note": "Elbows stay at the sides, no swinging, full range at the bottom."
+        }
+      ]
+    }
+  ]
+}
