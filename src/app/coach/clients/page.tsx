@@ -4,6 +4,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { requireCoach } from '@/lib/coach-guard';
 import { listClientSummaries, type ClientStatus } from '@/lib/clients';
 import type { ProgramContext } from '@/lib/program-week';
+import { Badge } from '@/components/ui';
 import { Chip, PageHeader } from '../ui';
 
 export const dynamic = 'force-dynamic';
@@ -59,9 +60,16 @@ export default async function ClientsPage() {
                 className="group flex items-center justify-between gap-4 px-2 py-4 hover:bg-surface/40 transition-colors"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="font-display text-2xl sm:text-3xl tracking-tight leading-none truncate group-hover:text-primary-hi transition-colors">
-                    {c.name}
-                  </p>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="font-display text-2xl sm:text-3xl tracking-tight leading-none truncate group-hover:text-primary-hi transition-colors">
+                      {c.name}
+                    </p>
+                    {c.clientType === 'pt' && (
+                      <Badge tone="progress" className="shrink-0">
+                        PT
+                      </Badge>
+                    )}
+                  </div>
                   <p className="mt-1.5 text-[10px] sm:text-[11px] uppercase tracking-[0.18em] text-faint">
                     <span className="tabular-nums text-muted">
                       {c.daysLoggedThisWeek}/{c.weeklyDayTarget}

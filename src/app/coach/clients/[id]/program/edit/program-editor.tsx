@@ -36,7 +36,40 @@ type DraftExercise = {
   prescription_raw: string;
   coach_note: string;
   muscle_group: MuscleGroup | null;
+  /**
+   * Supersets (0043). Two adjacent exercises sharing a group number are
+   * performed as one set of each, then rest, then repeat. Null means solo.
+   * Groups are scoped to the day and only ever hold a pair — see
+   * normalizeSupersets, which drops any group that stops being an adjacent
+   * pair after a move or a delete.
+   */
+  superset_group: number | null;
 };
+
+/**
+ * A superset only means anything if its two exercises are still next to
+ * each other. Reordering or removing a row can break that, so every
+ * mutation that touches order runs the list back through here.
+ */
+function normalizeSupersets(exercises: DraftExercise[]): DraftExercise[] {
+  const idxByGroup = new Map<number, number[]>();
+  exercises.forEach((e, i) => {
+    if (e.superset_group == null) return;
+    const arr = idxByGroup.get(e.superset_group) ?? [];
+    arr.push(i);
+    idxByGroup.set(e.superset_group, arr);
+  });
+  const broken = new Set<number>();
+  for (const [group, idxs] of idxByGroup) {
+    if (idxs.length !== 2 || idxs[1] - idxs[0] !== 1) broken.add(group);
+  }
+  if (broken.size === 0) return exercises;
+  return exercises.map((e) =>
+    e.superset_group != null && broken.has(e.superset_group)
+      ? { ...e, superset_group: null }
+      : e,
+  );
+}
 
 type DraftDay = {
   id?: string;
@@ -78,7 +111,13 @@ export function ProgramEditor({
               ...d,
               exercises: [
                 ...d.exercises,
-                { name: '', prescription_raw: '3x5-8', coach_note: '', muscle_group: null },
+                {
+                  name: '',
+                  prescription_raw: '3x5-8',
+                  coach_note: '',
+                  muscle_group: null,
+                  superset_group: null,
+                },
               ],
             }
           : d,
@@ -102,7 +141,9 @@ export function ProgramEditor({
   function removeEx(di: number, ei: number) {
     update((prev) =>
       prev.map((d, i) =>
-        i === di ? { ...d, exercises: d.exercises.filter((_, j) => j !== ei) } : d
+        i === di
+          ? { ...d, exercises: normalizeSupersets(d.exercises.filter((_, j) => j !== ei)) }
+          : d
       )
     );
   }
@@ -116,8 +157,48 @@ export function ProgramEditor({
         const arr = d.exercises.slice();
         const [item] = arr.splice(ei, 1);
         arr.splice(next, 0, item);
-        return { ...d, exercises: arr };
+        return { ...d, exercises: normalizeSupersets(arr) };
       })
+    );
+  }
+
+  /**
+   * Pair this exercise with the one below it, or break the pair if they are
+   * already supersetted. Either exercise may already belong to another pair;
+   * that pair is dissolved rather than silently left half-linked.
+   */
+  function toggleSuperset(di: number, ei: number) {
+    update((prev) =>
+      prev.map((d, i) => {
+        if (i !== di) return d;
+        const arr = d.exercises.slice();
+        const a = arr[ei];
+        const b = arr[ei + 1];
+        if (!a || !b) return d;
+
+        if (a.superset_group != null && a.superset_group === b.superset_group) {
+          arr[ei] = { ...a, superset_group: null };
+          arr[ei + 1] = { ...b, superset_group: null };
+          return { ...d, exercises: arr };
+        }
+
+        const dissolve = new Set<number>();
+        if (a.superset_group != null) dissolve.add(a.superset_group);
+        if (b.superset_group != null) dissolve.add(b.superset_group);
+        const cleared = arr.map((e) =>
+          e.superset_group != null && dissolve.has(e.superset_group)
+            ? { ...e, superset_group: null }
+            : e,
+        );
+
+        const used = cleared
+          .map((e) => e.superset_group)
+          .filter((g): g is number => g != null);
+        const group = used.length > 0 ? Math.max(...used) + 1 : 1;
+        cleared[ei] = { ...cleared[ei], superset_group: group };
+        cleared[ei + 1] = { ...cleared[ei + 1], superset_group: group };
+        return { ...d, exercises: cleared };
+      }),
     );
   }
 
@@ -135,6 +216,7 @@ export function ProgramEditor({
           prescription_raw: e.prescription_raw.trim(),
           coach_note: e.coach_note.trim() || null,
           muscle_group: e.muscle_group,
+          superset_group: e.superset_group,
         })),
       }));
       for (const d of cleaned) {
@@ -206,10 +288,29 @@ export function ProgramEditor({
             />
           </div>
           <ul className="divide-y divide-border">
-            {day.exercises.map((ex, ei) => (
-              <li key={ex.id ?? `new-${ei}`} className="px-4 py-3 space-y-2">
+            {day.exercises.map((ex, ei) => {
+              const prev = ei > 0 ? day.exercises[ei - 1] : null;
+              const next = day.exercises[ei + 1] ?? null;
+              const pairedUp =
+                ex.superset_group != null && prev?.superset_group === ex.superset_group;
+              const pairedDown =
+                ex.superset_group != null && next?.superset_group === ex.superset_group;
+              return (
+              <li
+                key={ex.id ?? `new-${ei}`}
+                className={`px-4 py-3 space-y-2 ${
+                  pairedUp || pairedDown
+                    ? 'border-l-2 border-l-accent bg-accent/[0.04]'
+                    : 'border-l-2 border-l-transparent'
+                }`}
+              >
                 <div className="flex items-baseline gap-2">
                   <span className="text-xs text-faint w-5 text-right tabular-nums">{ei + 1}.</span>
+                  {(pairedUp || pairedDown) && (
+                    <span className="shrink-0 text-[10px] uppercase tracking-[0.16em] text-accent font-medium">
+                      SS{ex.superset_group}
+                    </span>
+                  )}
                   <input
                     value={ex.name}
                     onChange={(e) => updateEx(di, ei, { name: e.target.value })}
@@ -248,7 +349,29 @@ export function ProgramEditor({
                     className="flex-1 bg-bg/40 rounded-lg border border-border px-2.5 py-1.5 text-sm focus:outline-none focus:border-primary/50"
                   />
                 </div>
-                <div className="flex items-center justify-end gap-3 pl-7 text-xs">
+                <div className="flex items-center justify-between gap-3 pl-7 text-xs">
+                  {next ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleSuperset(di, ei)}
+                      className={`inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[10px] uppercase tracking-[0.16em] font-medium transition-colors ${
+                        pairedDown
+                          ? 'border-accent/50 bg-accent/10 text-accent hover:bg-accent/20'
+                          : 'border-border text-faint hover:text-text hover:border-border-strong'
+                      }`}
+                      title={
+                        pairedDown
+                          ? 'Break this superset'
+                          : `Superset with "${next.name || 'the next exercise'}" — one set of each, then rest`
+                      }
+                    >
+                      <span aria-hidden>{pairedDown ? '⛓' : '⛓'}</span>
+                      {pairedDown ? 'Supersetted' : 'Superset with next'}
+                    </button>
+                  ) : (
+                    <span />
+                  )}
+                  <span className="flex items-center gap-3">
                   <button
                     type="button"
                     onClick={() => moveEx(di, ei, -1)}
@@ -274,9 +397,11 @@ export function ProgramEditor({
                   >
                     Remove
                   </button>
+                  </span>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
           <div className="px-4 py-3 border-t border-border">
             <button

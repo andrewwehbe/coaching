@@ -17,7 +17,6 @@ export function HistorySection({ workouts }: { workouts: Workout[] }) {
   if (workouts.length === 0) {
     return (
       <section className="mb-6">
-        <h2 className="text-sm uppercase tracking-wide text-faint mb-2">History</h2>
         <p className="rounded-xl border border-border bg-surface/60 px-4 py-3 text-sm text-muted">
           No workouts yet.
         </p>
@@ -37,7 +36,6 @@ export function HistorySection({ workouts }: { workouts: Workout[] }) {
 
   return (
     <section className="mb-6">
-      <h2 className="text-sm uppercase tracking-wide text-faint mb-2">History</h2>
       <div className="space-y-3">
         {weeks.map(([week, ws]) => (
           <div key={week} className="rounded-xl border border-border bg-surface/60 p-3">

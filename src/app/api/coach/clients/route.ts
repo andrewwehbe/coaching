@@ -16,6 +16,9 @@ export async function GET() {
 
 const Body = z.object({
   name: z.string().min(1).max(120),
+  // 'pt' clients train in person and never sign in (0043), so no PIN is
+  // issued for them at all.
+  client_type: z.enum(['online', 'pt']).default('online'),
   weekly_day_target: z.number().int().min(1).max(7).default(4),
   body_weight_freq: z.enum(['none', 'daily', '3x', 'weekly']).default('none'),
   photo_check_in_enabled: z.boolean().default(false),
@@ -31,15 +34,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
   }
 
-  const { pin, hash, hmac } = await generateUniquePin();
+  const isPt = parsed.data.client_type === 'pt';
+  // Only mint a credential for someone who will actually use it. A PT client
+  // with a PIN would be a loginable account nobody logs into.
+  const credential = isPt ? null : await generateUniquePin();
   const supa = db();
 
   const { data: client, error } = await supa
     .from('clients')
     .insert({
       name: parsed.data.name,
-      pin_hash: hash,
-      pin_hmac: hmac,
+      client_type: parsed.data.client_type,
+      pin_hash: credential?.hash ?? null,
+      pin_hmac: credential?.hmac ?? null,
       weekly_day_target: parsed.data.weekly_day_target,
       body_weight_freq: parsed.data.body_weight_freq,
       photo_check_in_enabled: parsed.data.photo_check_in_enabled,
@@ -58,8 +65,8 @@ export async function POST(req: Request) {
     action: 'create_client',
     targetType: 'client',
     targetId: client.id,
-    details: { name: client.name },
+    details: { name: client.name, client_type: parsed.data.client_type },
   });
 
-  return NextResponse.json({ client, pin });
+  return NextResponse.json({ client, pin: credential?.pin ?? null });
 }

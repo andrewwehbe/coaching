@@ -136,7 +136,9 @@ type ClientRow = {
   id: string;
   name: string;
   greeting_name: string | null;
-  pin_hash: string;
+  // Nullable since 0043: PT clients never sign in, so they carry no PIN.
+  // A null here must never authenticate — see the guard in tryClient.
+  pin_hash: string | null;
   pin_attempts: number | null;
   pin_locked_until: string | null;
   active: boolean;
@@ -234,6 +236,10 @@ async function tryClient(
   c: ClientRow,
   pin: string,
 ): Promise<{ ok: true; user: SessionUser } | { ok: false; reason: 'locked'; lockedUntil: Date } | null> {
+  // PT clients (0043) have no PIN. Bail before checkPin rather than relying
+  // on bcrypt to reject a null: a credential-less account must be
+  // unreachable by this path, not merely unlikely to match.
+  if (!c.pin_hash) return null;
   if (!(await checkPin(pin, c.pin_hash))) return null;
   const now = new Date();
   if (c.pin_locked_until && new Date(c.pin_locked_until) > now) {

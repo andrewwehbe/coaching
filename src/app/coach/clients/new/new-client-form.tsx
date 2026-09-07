@@ -9,13 +9,18 @@ type BodyWeightFreq = 'none' | 'daily' | '3x' | 'weekly';
 export function NewClientForm() {
   const router = useRouter();
   const [name, setName] = useState('');
+  const [clientType, setClientType] = useState<'online' | 'pt'>('online');
   const [weeklyDayTarget, setWeeklyDayTarget] = useState(4);
   const [bodyWeightFreq, setBodyWeightFreq] = useState<BodyWeightFreq>('none');
   const [photoCheckIn, setPhotoCheckIn] = useState(false);
   const [mealPlan, setMealPlan] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ name: string; pin: string; id: string } | null>(null);
+  const [created, setCreated] = useState<{
+    name: string;
+    pin: string | null;
+    id: string;
+  } | null>(null);
   const [pinHidden, setPinHidden] = useState(false);
 
   async function submit(e: React.FormEvent) {
@@ -28,6 +33,7 @@ export function NewClientForm() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
+          client_type: clientType,
           weekly_day_target: weeklyDayTarget,
           body_weight_freq: bodyWeightFreq,
           photo_check_in_enabled: photoCheckIn,
@@ -39,7 +45,7 @@ export function NewClientForm() {
         setError(body.error ?? 'Failed to create client');
         return;
       }
-      setCreated({ name: body.client.name, pin: body.pin, id: body.client.id });
+      setCreated({ name: body.client.name, pin: body.pin ?? null, id: body.client.id });
     } catch {
       setError('Network error.');
     } finally {
@@ -48,18 +54,30 @@ export function NewClientForm() {
   }
 
   if (created) {
+    const pin = created.pin;
     return (
       <div className="space-y-6">
+        {pin === null ? (
+          <div className="rounded-2xl border border-accent/40 bg-accent/8 p-6 text-center">
+            <p className="text-sm text-accent mb-2">{created.name} is a PT client.</p>
+            <p className="text-xs text-muted">
+              No PIN was issued — they don&apos;t sign in. Log their sessions from the client page
+              with &ldquo;Log on behalf&rdquo;.
+            </p>
+          </div>
+        ) : (
         <div className="rounded-2xl border border-primary/40 bg-primary/8 p-6 text-center shadow-[0_0_60px_-20px_rgba(34,197,94,0.7)]">
           <p className="text-sm text-primary-hi mb-2">Send this PIN to {created.name}:</p>
           <p className="text-5xl font-bold tracking-[0.3em] tabular-nums my-4 text-text">
-            {pinHidden ? '•••••' : created.pin}
+            {pinHidden ? '•••••' : pin}
           </p>
           <p className="text-xs text-muted">
             This is the only time the PIN will be shown. If you lose it, regenerate from the
             client&apos;s detail page.
           </p>
         </div>
+        )}
+        {pin !== null && (
         <div className="flex gap-3">
           <button
             type="button"
@@ -71,13 +89,14 @@ export function NewClientForm() {
           <button
             type="button"
             onClick={async () => {
-              await navigator.clipboard.writeText(created.pin);
+              await navigator.clipboard.writeText(pin);
             }}
             className="flex-1 h-12 rounded-xl border border-border text-sm text-text hover:bg-surface-2 transition-colors"
           >
             Copy
           </button>
         </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Link
             href={`/coach/clients/${created.id}`}
@@ -110,6 +129,37 @@ export function NewClientForm() {
           placeholder="Client name"
           className="w-full h-12 rounded-xl bg-surface border border-border px-3 focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 transition-shadow placeholder:text-faint"
         />
+      </Field>
+
+      <Field label="Client type">
+        <div className="grid grid-cols-2 gap-2">
+          {(
+            [
+              ['online', 'Online', 'Signs in with a PIN, logs their own sets'],
+              ['pt', 'Personal training', 'No login — you log their sessions'],
+            ] as const
+          ).map(([value, label, hint]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setClientType(value)}
+              className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                clientType === value
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border bg-surface/40 hover:bg-surface'
+              }`}
+            >
+              <span
+                className={`block text-sm font-medium ${
+                  clientType === value ? 'text-primary-hi' : 'text-text'
+                }`}
+              >
+                {label}
+              </span>
+              <span className="mt-0.5 block text-xs text-muted">{hint}</span>
+            </button>
+          ))}
+        </div>
       </Field>
 
       <Field label="Weekly day target">

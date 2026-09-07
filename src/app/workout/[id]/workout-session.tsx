@@ -68,6 +68,82 @@ function emptyDraft(unit: 'kg' | 'lb'): Draft {
   };
 }
 
+/**
+ * The other half of a superset, if this exercise is in one.
+ *
+ * Groups are only ever adjacent pairs — the editor enforces it and the save
+ * route re-validates it — so the partner is either the row above or below.
+ * Anything else is treated as solo rather than guessed at.
+ */
+function supersetPartnerIdx(list: ExerciseState[], idx: number): number | null {
+  const me = list[idx];
+  if (!me || me.supersetGroup == null) return null;
+  for (const j of [idx - 1, idx + 1]) {
+    const other = list[j];
+    if (other && other.supersetGroup === me.supersetGroup) return j;
+  }
+  return null;
+}
+
+/**
+ * Superset header: both lifts side by side with the active one lit, plus the
+ * round counter. A superset is one set of each then rest, so "round" is the
+ * number that matters, not each exercise's own set count.
+ */
+function SupersetPanel({
+  a,
+  b,
+  activeId,
+}: {
+  a: ExerciseState;
+  b: ExerciseState;
+  activeId: string;
+}) {
+  const rounds = Math.max(a.prescribedSets ?? 0, b.prescribedSets ?? 0);
+  const round = Math.min(a.sets.length, b.sets.length) + 1;
+  return (
+    <section
+      aria-label="Superset"
+      className="mb-4 rounded-[var(--r-card)] border border-accent/40 bg-accent/[0.06] overflow-hidden"
+    >
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-accent/25">
+        <span className="text-[10px] uppercase tracking-[0.2em] text-accent font-medium">
+          Superset
+        </span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent tabular-nums">
+          Round {Math.min(round, rounds || round)}
+          {rounds > 0 ? ` of ${rounds}` : ''}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 divide-x divide-accent/25">
+        {[a, b].map((ex) => {
+          const active = ex.id === activeId;
+          return (
+            <div
+              key={ex.id}
+              className={`px-3 py-2.5 ${active ? 'bg-accent/10' : ''}`}
+              aria-current={active ? 'step' : undefined}
+            >
+              <p
+                className={`text-xs font-medium leading-snug ${
+                  active ? 'text-text' : 'text-muted'
+                }`}
+              >
+                {ex.name}
+              </p>
+              <p className="mt-0.5 font-mono text-[10px] tabular-nums text-faint">
+                {ex.sets.length}
+                {ex.prescribedSets != null ? `/${ex.prescribedSets}` : ''} sets
+                {active ? ' · now' : ''}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function WorkoutSession({
   workoutId,
   dayLabel,
@@ -254,6 +330,20 @@ export function WorkoutSession({
     const draftSnapshot = draft;
     const wasEditing = !useLast && draft.editingSetNumber != null;
 
+    // ---- Superset routing ----
+    // In a superset the next thing is the OTHER lift, not a rest. Rest only
+    // starts once the round is closed (both halves have logged this round).
+    const partnerIdx = supersetPartnerIdx(state, prevIdx);
+    const partner = partnerIdx != null ? state[partnerIdx] : null;
+    const myCountAfter = current.sets.some((s) => s.setNumber === effectiveSetNumber)
+      ? current.sets.length
+      : current.sets.length + 1;
+    const goToPartner =
+      !wasEditing &&
+      partner != null &&
+      partner.logStatus == null &&
+      partner.sets.length < myCountAfter;
+
     // ---- Optimistic apply ----
     setState((prev) => {
       const next = prev.map((e) => {
@@ -280,12 +370,19 @@ export function WorkoutSession({
             : e.logStatus) as ExerciseState['logStatus'],
         };
       });
-      if (effectiveIsLast) setCurrentIdx((idx) => advanceFrom(next, idx));
+      if (goToPartner && partnerIdx != null) {
+        // Finish the round before resting or moving on, even if this was the
+        // last set of this half — the partner still owes a set.
+        setCurrentIdx(partnerIdx);
+      } else if (effectiveIsLast) {
+        setCurrentIdx((idx) => advanceFrom(next, idx));
+      }
       return next;
     });
     clearDraft(current.id);
-    // Rest starts immediately — an edit or a final set doesn't need one.
-    setResting(!wasEditing && !effectiveIsLast);
+    // Rest starts immediately — an edit, a final set, or a hand-off to the
+    // other half of a superset doesn't need one.
+    setResting(!wasEditing && !effectiveIsLast && !goToPartner);
 
     // ---- Background settle ----
     void (async () => {
@@ -419,6 +516,16 @@ export function WorkoutSession({
 
   const isFirstSetOverall = state.every((e) => e.sets.length === 0);
 
+  // Ordered pair (by position) so the panel doesn't flip left/right as the
+  // active half changes.
+  const pairIdx = supersetPartnerIdx(state, currentIdx);
+  const supersetPair: [ExerciseState, ExerciseState] | null =
+    pairIdx == null
+      ? null
+      : pairIdx < currentIdx
+        ? [state[pairIdx], current]
+        : [current, state[pairIdx]];
+
   return (
     <main className="flex flex-1 flex-col px-5 py-6 max-w-md w-full mx-auto">
       <SessionChrome
@@ -431,6 +538,10 @@ export function WorkoutSession({
         online={online}
         pending={pending}
       />
+
+      {supersetPair && (
+        <SupersetPanel a={supersetPair[0]} b={supersetPair[1]} activeId={current.id} />
+      )}
 
       <CoachNoteCard note={current.coachNote} />
 

@@ -59,7 +59,7 @@ export default async function WorkoutPage(props: { params: Params }) {
     supa
       .from('exercises')
       .select(
-        'id, position, name, name_key, prescription_raw, prescribed_sets, rep_min, rep_max, coach_note, is_cardio, cardio_type'
+        'id, position, name, name_key, prescription_raw, prescribed_sets, rep_min, rep_max, coach_note, is_cardio, cardio_type, superset_group'
       )
       .eq('day_id', workout.day_id)
       .is('archived_at', null)
@@ -129,6 +129,7 @@ export default async function WorkoutPage(props: { params: Params }) {
       position: ex.position,
       prescriptionRaw: ex.prescription_raw,
       prescribedSets: ex.prescribed_sets,
+      supersetGroup: ex.superset_group ?? null,
       repMin: ex.rep_min,
       repMax: ex.rep_max,
       coachNote: ex.coach_note,
@@ -211,6 +212,7 @@ export default async function WorkoutPage(props: { params: Params }) {
         position: ex.position,
         prescriptionRaw: ex.prescription_raw,
         prescribedSets: ex.prescribed_sets,
+        supersetGroup: ex.superset_group ?? null,
         repMin: ex.rep_min,
         repMax: ex.rep_max,
         coachNote: ex.coach_note,

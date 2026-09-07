@@ -7,10 +7,17 @@ import { computeProgramContext, type ProgramContext } from './program-week';
 
 export type ClientStatus = 'on_track' | 'behind' | 'inactive' | 'pain';
 
+/**
+ * 'online' clients sign in and log their own sets. 'pt' clients train in
+ * person, have no PIN (0043), and are logged on their behalf by the coach.
+ */
+export type ClientType = 'online' | 'pt';
+
 export type ClientSummary = {
   id: string;
   name: string;
   active: boolean;
+  clientType: ClientType;
   weeklyDayTarget: number;
   daysLoggedThisWeek: number;
   lastActivityAt: string | null;
@@ -44,7 +51,7 @@ export async function listClientSummaries(): Promise<ClientSummary[]> {
 
   const { data: clients } = await supa
     .from('clients')
-    .select('id, name, active, weekly_day_target, deactivated_at')
+    .select('id, name, active, client_type, weekly_day_target, deactivated_at')
     .order('created_at', { ascending: true });
 
   if (!clients || clients.length === 0) return [];
@@ -171,6 +178,7 @@ export async function listClientSummaries(): Promise<ClientSummary[]> {
       id: c.id,
       name: c.name,
       active: c.active,
+      clientType: (c.client_type === 'pt' ? 'pt' : 'online') as ClientType,
       weeklyDayTarget: c.weekly_day_target,
       daysLoggedThisWeek: daysLogged,
       lastActivityAt,

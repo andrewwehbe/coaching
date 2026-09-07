@@ -25,10 +25,12 @@ export async function generateUniquePin(): Promise<{
     supa.from('coaches').select('pin_hash'),
     supa.from('clients').select('pin_hash'),
   ]);
+  // PT clients (0043) have a null pin_hash. They can't collide with anything
+  // and bcrypt.compare would throw on them, so drop them from the scan.
   const hashes = [
-    ...(coaches ?? []).map((c) => c.pin_hash as string),
-    ...(clients ?? []).map((c) => c.pin_hash as string),
-  ];
+    ...(coaches ?? []).map((c) => c.pin_hash as string | null),
+    ...(clients ?? []).map((c) => c.pin_hash as string | null),
+  ].filter((h): h is string => !!h);
 
   const maxAttempts = 200;
   for (let i = 0; i < maxAttempts; i++) {

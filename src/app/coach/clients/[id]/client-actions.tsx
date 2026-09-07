@@ -12,12 +12,16 @@ export function ClientActions({
   active,
   currentWeekIsDeload,
   logMode,
+  clientType = 'online',
 }: {
   clientId: string;
   active: boolean;
   currentWeekIsDeload: boolean;
   logMode: 'sets' | 'best' | 'all';
+  /** PT clients never sign in (0043), so PIN controls are hidden for them. */
+  clientType?: 'online' | 'pt';
 }) {
+  const hasPin = clientType !== 'pt';
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
@@ -155,15 +159,21 @@ export function ClientActions({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <button
-          type="button"
-          onClick={() => setConfirming('pin')}
-          disabled={busy !== null || pending}
-          className="rounded-lg border border-border bg-surface/40 hover:bg-surface hover:border-border-strong text-text px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50"
-        >
-          {busy === 'pin' ? 'Generating…' : 'Regenerate PIN'}
-        </button>
+      <div
+        className={`grid grid-cols-1 gap-2 ${
+          hasPin ? 'sm:grid-cols-3' : 'sm:grid-cols-2'
+        }`}
+      >
+        {hasPin && (
+          <button
+            type="button"
+            onClick={() => setConfirming('pin')}
+            disabled={busy !== null || pending}
+            className="rounded-lg border border-border bg-surface/40 hover:bg-surface hover:border-border-strong text-text px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            {busy === 'pin' ? 'Generating…' : 'Regenerate PIN'}
+          </button>
+        )}
         <button
           type="button"
           onClick={toggleDeload}
@@ -196,7 +206,7 @@ export function ClientActions({
 
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
 
-      {confirming === 'pin' && (
+      {hasPin && confirming === 'pin' && (
         <Sheet
           title="Generate a new PIN?"
           subtitle="The current PIN stops working immediately. Share the new one with the client — it's shown once."

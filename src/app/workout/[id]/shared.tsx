@@ -48,6 +48,11 @@ export type ExerciseCore = {
   selfNote: string | null;
   isCardio: boolean;
   cardioType: 'treadmill' | 'elliptical' | 'stairmaster' | null;
+  /**
+   * Supersets (0043). Two ADJACENT exercises sharing this number are run as
+   * a pair: one set of each, then rest, then the next round. Null = solo.
+   */
+  supersetGroup: number | null;
   logStatus: LogStatus;
   // True when the client reported pain but chose to keep going on this
   // exercise. logStatus stays null so they can still log sets; this just

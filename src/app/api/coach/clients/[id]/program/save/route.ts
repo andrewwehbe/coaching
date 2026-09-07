@@ -40,6 +40,12 @@ const Body = z.object({
             prescription_raw: z.string().trim().min(1).max(120),
             coach_note: z.string().trim().max(2000).nullable().optional(),
             muscle_group: z.enum(MUSCLE_GROUPS).nullable().optional(),
+            // Supersets (0043). Two ADJACENT exercises in the same day
+            // sharing this number are performed as a pair. The editor
+            // maintains adjacency; this route re-validates it below rather
+            // than trusting the client, since a non-adjacent or orphaned
+            // group would render as a superset the logger can't pair up.
+            superset_group: z.number().int().min(1).max(32767).nullable().optional(),
           })
         ),
       })
@@ -147,6 +153,7 @@ export async function POST(req: Request, ctx: { params: Params }) {
       is_cardio: boolean;
       coach_note: string | null;
       muscle_group: string | null;
+      superset_group: number | null;
     }>;
   };
   const daysPayload: DayOp[] = [];
@@ -203,8 +210,26 @@ export async function POST(req: Request, ctx: { params: Params }) {
         is_cardio: rx.is_cardio,
         coach_note: ex.coach_note?.trim() || null,
         muscle_group: ex.muscle_group ?? null,
+        superset_group: ex.superset_group ?? null,
       });
       savedExercises.push({ id: exId });
+    }
+
+    // A superset group is only meaningful as an adjacent pair. Drop any
+    // group that arrives orphaned, oversized, or split apart — better a
+    // solo exercise than a half-superset the logger renders as a broken
+    // round.
+    const groupPositions = new Map<number, number[]>();
+    exOps.forEach((e, i) => {
+      if (e.superset_group == null) return;
+      const arr = groupPositions.get(e.superset_group) ?? [];
+      arr.push(i);
+      groupPositions.set(e.superset_group, arr);
+    });
+    for (const [group, idxs] of groupPositions) {
+      if (idxs.length === 2 && idxs[1] - idxs[0] === 1) continue;
+      for (const i of idxs) exOps[i].superset_group = null;
+      log.warn('program.save.dropped_superset', { clientId, dayIndex, group });
     }
 
     daysPayload.push({
