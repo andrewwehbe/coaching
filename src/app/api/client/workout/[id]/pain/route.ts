@@ -58,7 +58,9 @@ export async function POST(req: Request, props: { params: Params }) {
     return NextResponse.json({ error: 'Failed to log pain' }, { status: 500 });
   }
 
-  await insertAlert({
+  // Pain still lands in exercise_logs for the signals engine; only the
+  // self-notification is skipped when the coach is the one logging.
+  if (ctx.actor === 'client') await insertAlert({
     clientId: ctx.user.id,
     type: 'pain',
     message: `${ctx.user.name} reported pain on ${ex.name}.`,

@@ -26,12 +26,16 @@ export async function POST(_req: Request, props: { params: Params }) {
     return NextResponse.json({ error: 'Failed to complete' }, { status: 500 });
   }
 
-  await insertAlert({
-    clientId: ctx.user.id,
-    type: 'workout_completed',
-    message: `${ctx.user.name} finished a workout (${count ?? 0} exercises).`,
-    data: { workout_id: ctx.workout.id },
-  });
+  // The coach logging a PT client's session does not need to be told about
+  // it — the alert exists to tell the coach what clients did on their own.
+  if (ctx.actor === 'client') {
+    await insertAlert({
+      clientId: ctx.user.id,
+      type: 'workout_completed',
+      message: `${ctx.user.name} finished a workout (${count ?? 0} exercises).`,
+      data: { workout_id: ctx.workout.id },
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

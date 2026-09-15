@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { notFound, redirect } from 'next/navigation';
 
-import { loadClientWorkout } from '@/lib/workout-guard';
+import { loadClientWorkout, workoutHomeFor } from '@/lib/workout-guard';
 import { buildSessionSummary, type ExerciseSummary } from '@/lib/session-summary';
 import { SrpePrompt } from './srpe-prompt';
 
@@ -20,15 +20,16 @@ export default async function WorkoutSummaryPage(props: { params: Params }) {
 
   const summary = await buildSessionSummary(id);
   if (!summary) notFound();
+  const home = workoutHomeFor(ctx);
 
   return (
     <main className="flex flex-1 flex-col px-5 py-7 max-w-md w-full mx-auto">
       <Link
-        href="/today"
+        href={home.href}
         prefetch={false}
         className="inline-flex items-center text-[10px] uppercase tracking-[0.22em] text-faint hover:text-text transition-colors"
       >
-        ← Today
+        ← {home.label}
       </Link>
 
       <header className="mt-4 mb-6">
@@ -77,7 +78,7 @@ export default async function WorkoutSummaryPage(props: { params: Params }) {
       <SrpePrompt workoutId={summary.workout.id} initial={summary.workout.sessionRpe} />
 
       <Link
-        href="/today"
+        href={home.href}
         prefetch={false}
         className="mt-8 self-stretch text-center px-4 py-3 rounded-xl bg-primary hover:bg-primary-hi text-bg text-sm font-semibold transition-colors"
       >

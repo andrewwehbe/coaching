@@ -278,7 +278,16 @@ async function OverviewTab({
   return (
     <>
       <div className="flex flex-wrap gap-2 mb-6">
-        <ActionLink href={`/coach/clients/${clientId}/log`} primary>
+        {isPt && program && client.active && (
+          <ActionLink
+            href={`/coach/clients/${clientId}/train`}
+            primary
+            title="Open the live logger for this client's session"
+          >
+            Train
+          </ActionLink>
+        )}
+        <ActionLink href={`/coach/clients/${clientId}/log`} primary={!(isPt && program && client.active)}>
           Log on behalf
         </ActionLink>
         {program && (

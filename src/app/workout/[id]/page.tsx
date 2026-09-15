@@ -1,6 +1,8 @@
 import { notFound, redirect } from 'next/navigation';
 
 import { readSession } from '@/lib/auth';
+import { workoutHomeFor } from '@/lib/workout-guard';
+import { WorkoutHomeProvider } from './home-context';
 import { db } from '@/lib/supabase';
 import { buildCue, type Best, type Prescription } from '@/lib/cue';
 import { loadBlockBests } from '@/lib/block-best';
@@ -24,25 +26,38 @@ export default async function WorkoutPage(props: { params: Params }) {
   const { id } = await props.params;
   const user = await readSession();
   if (!user) redirect('/login');
-  if (user.type !== 'client') redirect('/coach');
-  if (!user.active) redirect('/deactivated');
+  if (user.type === 'client' && !user.active) redirect('/deactivated');
 
   const supa = db();
 
-  const [{ data: workout }, { data: clientPrefs }] = await Promise.all([
-    supa
-      .from('workouts')
-      .select('id, day_id, completed_at, client_id, is_deload')
-      .eq('id', id)
-      .maybeSingle(),
-    supa
-      .from('clients')
-      .select('log_mode')
-      .eq('id', user.id)
-      .maybeSingle(),
-  ]);
+  const { data: workout } = await supa
+    .from('workouts')
+    .select('id, day_id, completed_at, client_id, is_deload')
+    .eq('id', id)
+    .maybeSingle();
+  if (!workout) notFound();
 
-  if (!workout || workout.client_id !== user.id) notFound();
+  // Who owns this workout, and may the session drive it?
+  //  - a client session: only its own workouts.
+  //  - the coach: only workouts of ACTIVE PT clients (no login of their own,
+  //    so the coach runs their logger). Anything else bounces to /coach.
+  const { data: owner } = await supa
+    .from('clients')
+    .select('id, name, active, client_type, log_mode')
+    .eq('id', workout.client_id)
+    .maybeSingle();
+  if (!owner) notFound();
+  if (user.type === 'client') {
+    if (workout.client_id !== user.id) notFound();
+  } else if (!owner.active || owner.client_type !== 'pt') {
+    redirect('/coach');
+  }
+  const clientId = owner.id;
+  const home = workoutHomeFor({
+    actor: user.type === 'coach' ? 'coach' : 'client',
+    user: { type: 'client', id: owner.id, name: owner.name, greetingName: owner.name, active: owner.active },
+  });
+  const clientPrefs = owner;
   // Completed workouts have a canonical URL: the summary screen.
   if (workout.completed_at) redirect(`/workout/${id}/summary`);
   const logMode: 'sets' | 'best' | 'all' =
@@ -79,13 +94,13 @@ export default async function WorkoutPage(props: { params: Params }) {
         supa
           .from('best_efforts')
           .select('exercise_name_key, best_weight, best_unit, best_reps, pinned')
-          .eq('client_id', user.id)
+          .eq('client_id', clientId)
           .in('exercise_name_key', nameKeys)
           .then((r) => r.data ?? []),
         supa
           .from('exercise_self_notes')
           .select('exercise_name_key, note')
-          .eq('client_id', user.id)
+          .eq('client_id', clientId)
           .in('exercise_name_key', nameKeys)
           .then((r) => r.data ?? []),
       ])
@@ -101,7 +116,7 @@ export default async function WorkoutPage(props: { params: Params }) {
   // no data yet (the opening "just log your weight" sessions).
   const blockBestByKey = await loadBlockBests(
     supa,
-    user.id,
+    clientId,
     day?.program_id ?? null,
     nameKeys
   );
@@ -159,7 +174,7 @@ export default async function WorkoutPage(props: { params: Params }) {
     const { data: priorWorkout } = await supa
       .from('workouts')
       .select('id')
-      .eq('client_id', user.id)
+      .eq('client_id', clientId)
       .eq('day_id', workout.day_id)
       .not('completed_at', 'is', null)
       .neq('id', workout.id)
@@ -235,24 +250,28 @@ export default async function WorkoutPage(props: { params: Params }) {
     });
 
     return (
-      <WorkoutSessionAll
-        workoutId={workout.id}
-        dayLabel={day?.label ?? 'Workout'}
-        completed={!!workout.completed_at}
-        isDeload={!!workout.is_deload}
-        exercises={allStates}
-      />
+      <WorkoutHomeProvider home={home}>
+        <WorkoutSessionAll
+          workoutId={workout.id}
+          dayLabel={day?.label ?? 'Workout'}
+          completed={!!workout.completed_at}
+          isDeload={!!workout.is_deload}
+          exercises={allStates}
+        />
+      </WorkoutHomeProvider>
     );
   }
 
   return (
-    <WorkoutSession
-      workoutId={workout.id}
-      dayLabel={day?.label ?? 'Workout'}
-      completed={!!workout.completed_at}
-      isDeload={!!workout.is_deload}
-      logMode={logMode}
-      exercises={states}
-    />
+    <WorkoutHomeProvider home={home}>
+      <WorkoutSession
+        workoutId={workout.id}
+        dayLabel={day?.label ?? 'Workout'}
+        completed={!!workout.completed_at}
+        isDeload={!!workout.is_deload}
+        logMode={logMode}
+        exercises={states}
+      />
+    </WorkoutHomeProvider>
   );
 }

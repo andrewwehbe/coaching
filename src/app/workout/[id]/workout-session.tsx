@@ -457,6 +457,7 @@ export function WorkoutSession({
           filename: file.name,
           size: file.size,
           contentType: file.type || 'video/mp4',
+          workoutId,
         }),
       });
       if (!presign.ok) {

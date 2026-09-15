@@ -21,6 +21,7 @@ import {
 import { OfflineBanner } from '@/components/offline-banner';
 import { Button, Sheet, TextareaField, toast } from '@/components/ui';
 import { enqueueAndSend, flushQueue, pendingCount } from '@/lib/offline-queue';
+import { useWorkoutHome } from './home-context';
 
 export type LoggedSet = {
   setNumber: number;
@@ -172,6 +173,7 @@ export function useWorkoutLifecycle<T extends ExerciseCore>({
   onAdvanced?: () => void;
 }) {
   const router = useRouter();
+  const home = useWorkoutHome();
   const [submitting, setSubmitting] = useState(false);
   const [doneNow, setDoneNow] = useState(completed);
 
@@ -273,7 +275,7 @@ export function useWorkoutLifecycle<T extends ExerciseCore>({
         toast(e.error ?? "Couldn't cancel the workout — try again.", 'danger');
         return;
       }
-      router.push('/today');
+      router.push(home.href);
       router.refresh();
     } finally {
       setSubmitting(false);
@@ -309,6 +311,7 @@ export function DoneScreen({
   submitting: boolean;
   onFinish: () => void;
 }) {
+  const home = useWorkoutHome();
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 text-center space-y-6">
       <div className="h-20 w-20 rounded-full bg-primary/15 ring-1 ring-primary/40 flex items-center justify-center shadow-[0_0_60px_-10px_rgba(34,197,94,0.7)]">
@@ -329,19 +332,20 @@ export function DoneScreen({
           Finish & save
         </button>
       )}
-      <Link href="/today" className="text-primary-hi hover:text-primary text-sm transition-colors">
-        Back to today
+      <Link href={home.href} className="text-primary-hi hover:text-primary text-sm transition-colors">
+        Back to {home.label}
       </Link>
     </main>
   );
 }
 
 export function NoExercisesScreen() {
+  const home = useWorkoutHome();
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 text-center space-y-4">
       <h1 className="text-2xl font-semibold">No exercises today.</h1>
-      <Link href="/today" className="text-primary-hi hover:text-primary transition-colors">
-        Back to today
+      <Link href={home.href} className="text-primary-hi hover:text-primary transition-colors">
+        Back to {home.label}
       </Link>
     </main>
   );
@@ -366,10 +370,11 @@ export function SessionChrome({
   online: boolean;
   pending: number;
 }) {
+  const home = useWorkoutHome();
   return (
     <>
       <header className="flex items-center justify-between mb-3 text-sm">
-        <Link href="/today" className="text-muted hover:text-text transition-colors">
+        <Link href={home.href} className="text-muted hover:text-text transition-colors">
           ← {dayLabel}
         </Link>
         <span className="font-medium text-faint tabular-nums">
