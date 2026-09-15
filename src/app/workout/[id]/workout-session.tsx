@@ -331,18 +331,33 @@ export function WorkoutSession({
     const wasEditing = !useLast && draft.editingSetNumber != null;
 
     // ---- Superset routing ----
-    // In a superset the next thing is the OTHER lift, not a rest. Rest only
-    // starts once the round is closed (both halves have logged this round).
+    // A superset is strict alternation: A, B, rest, A, B, rest. After a set
+    // the next thing is the OTHER lift if it still owes a set this round;
+    // otherwise the round is closed, rest starts, and the next round opens
+    // on the first half that still has sets left (A before B). When one
+    // half runs out of sets the other simply carries on alone.
     const partnerIdx = supersetPartnerIdx(state, prevIdx);
     const partner = partnerIdx != null ? state[partnerIdx] : null;
     const myCountAfter = current.sets.some((s) => s.setNumber === effectiveSetNumber)
       ? current.sets.length
       : current.sets.length + 1;
+    const partnerDone =
+      partner == null ||
+      partner.logStatus != null ||
+      (partner.prescribedSets != null && partner.sets.length >= partner.prescribedSets);
     const goToPartner =
       !wasEditing &&
       partner != null &&
-      partner.logStatus == null &&
+      !partnerDone &&
       partner.sets.length < myCountAfter;
+    // Round closed inside a superset: who opens the next round?
+    let nextRoundIdx: number | null = null;
+    if (!wasEditing && partner != null && partnerIdx != null && !goToPartner) {
+      const lo = Math.min(prevIdx, partnerIdx);
+      const hi = Math.max(prevIdx, partnerIdx);
+      const doneAt = (i: number) => (i === prevIdx ? effectiveIsLast : partnerDone);
+      nextRoundIdx = !doneAt(lo) ? lo : !doneAt(hi) ? hi : null;
+    }
 
     // ---- Optimistic apply ----
     setState((prev) => {
@@ -374,6 +389,9 @@ export function WorkoutSession({
         // Finish the round before resting or moving on, even if this was the
         // last set of this half — the partner still owes a set.
         setCurrentIdx(partnerIdx);
+      } else if (nextRoundIdx != null) {
+        // Next round of the superset opens on A if A still has sets.
+        setCurrentIdx(nextRoundIdx);
       } else if (effectiveIsLast) {
         setCurrentIdx((idx) => advanceFrom(next, idx));
       }
@@ -381,8 +399,13 @@ export function WorkoutSession({
     });
     clearDraft(current.id);
     // Rest starts immediately — an edit, a final set, or a hand-off to the
-    // other half of a superset doesn't need one.
-    setResting(!wasEditing && !effectiveIsLast && !goToPartner);
+    // other half of a superset doesn't need one. Inside a superset, rest
+    // only when the round closed and another round is still owed.
+    setResting(
+      !wasEditing &&
+        !goToPartner &&
+        (partner != null ? nextRoundIdx != null : !effectiveIsLast),
+    );
 
     // ---- Background settle ----
     void (async () => {
