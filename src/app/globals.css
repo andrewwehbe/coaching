@@ -133,6 +133,17 @@ select {
   }
 }
 
+/* No sideways scroll, ever. A wide table or a long unbroken string can push
+   the page wider than the phone; the page itself never scrolls sideways,
+   only the element that needs to (give it overflow-x:auto). pan-y keeps
+   vertical scrolling and kills horizontal drag and pinch at the root. */
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  touch-action: pan-y;
+}
+
 /* Buttons feel sluggish in mobile Safari because of the legacy 300ms
    double-tap-zoom delay. `manipulation` opts out. */
 button,

@@ -38,9 +38,11 @@ export const viewport: Viewport = {
   themeColor: '#06090a',
   width: 'device-width',
   initialScale: 1,
-  // Pinch zoom stays enabled (WCAG 1.4.4). The old maximumScale:1 +
-  // userScalable:false blocked it; the 16px input floor in globals.css is
-  // what actually prevents iOS focus-zoom, so nothing regresses.
+  // Zoom off by owner's decision (2026-09-15): the app is a fixed phone
+  // layout and pinch or double-tap zoom was leaving screens stuck sideways.
+  // The 16px input floor in globals.css still prevents iOS focus-zoom.
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: 'cover',
 };
 
