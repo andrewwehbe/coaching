@@ -21,6 +21,7 @@ import {
 } from '../src/lib/signals/progression';
 import { buildCue, type Best, type Prescription } from '../src/lib/cue';
 import { quoteClientText } from '../src/lib/client-text';
+import { pickIdleWorkouts } from '../src/lib/auto-finish';
 import {
   EMPTY_PROGRAM_CONTEXT,
   computeProgramContext,
@@ -4675,6 +4676,31 @@ eq('quote: null -> null', quoteClientText(null), null);
 eq('quote: whitespace collapsed', quoteClientText('  felt  too\nheavy '), '“felt too heavy”');
 eq('quote: Arabizi kept', quoteClientText('ma baarf'), '“ma baarf”');
 check('quote: long note cut to 160 chars', (quoteClientText('a'.repeat(400)) ?? '').length === 162);
+
+// ---------- auto-finish of idle open workouts ----------
+
+{
+  const H = 3600 * 1000;
+  const now = Date.parse('2026-10-19T12:00:00Z');
+  const picked = pickIdleWorkouts(
+    [
+      // Last set 5h ago: finished, stamped at that set.
+      { id: 'idle', exercise_logs: [{ created_at: '2026-10-19T06:00:00Z', sets: [{ created_at: '2026-10-19T06:10:00Z' }, { created_at: '2026-10-19T07:00:00Z' }] }] },
+      // Last set 1h ago: still training.
+      { id: 'live', exercise_logs: [{ created_at: '2026-10-19T09:00:00Z', sets: [{ created_at: '2026-10-19T11:00:00Z' }] }] },
+      // Nothing logged: left alone.
+      { id: 'empty', exercise_logs: [] },
+      { id: 'null-logs', exercise_logs: null },
+      // Skip-only session (no sets) still counts as work.
+      { id: 'skips', exercise_logs: [{ created_at: '2026-10-18T10:00:00Z', sets: null }] },
+    ],
+    now,
+    4 * H
+  );
+  eq('autofinish: idle + skip-only picked, live + empty kept open', picked.map((p) => p.id), ['idle', 'skips']);
+  eq('autofinish: stamped at last set', picked[0]?.completedAt, '2026-10-19T07:00:00.000Z');
+  eq('autofinish: exactly at the idle edge finishes', pickIdleWorkouts([{ id: 'edge', exercise_logs: [{ created_at: '2026-10-19T08:00:00Z', sets: [] }] }], now, 4 * H).length, 1);
+}
 
 // ---------- summary ----------
 

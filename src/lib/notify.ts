@@ -13,15 +13,15 @@ export type { AlertType };
 
 // Coach-facing alerts that should auto-push the coach when written via
 // insertAlert. Non-pushable: check_in_due (client-bound, sent by cron
-// not coach-facing) and weekly_note_sent (per-client dedup row, no
-// coach action implied). The Stage 6 anomaly types (adherence_drop,
+// not coach-facing), weekly_note_sent (per-client dedup row, no coach
+// action implied) and stalled (Alerts page only, by Andrew's call on
+// 2026-10-19: too many, too cryptic). The Stage 6 anomaly types (adherence_drop,
 // returned_after_gap, performance_cliff, went_quiet) ARE in here for
 // defense — the daily-analysis cron currently bypasses insertAlert and
 // sends its own push, but if a future caller routes through here it
 // should push.
 const PUSHABLE: ReadonlySet<AlertType> = new Set<AlertType>([
   'pain',
-  'stalled',
   'missed_workout',
   'workout_started',
   'workout_completed',

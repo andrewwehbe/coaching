@@ -15,6 +15,9 @@ export const RATE_LIMIT_24H = 20;
 // ---------- Workout / schedule ----------
 export const STALE_WORKOUT_AFTER_HOURS = 2;
 export const STALE_WORKOUT_LOOKBACK_HOURS = 24;
+/** A session with logged work and nothing new for this long is finished
+ *  automatically (stale-workouts cron), stamped at its last logged set. */
+export const WORKOUT_AUTO_FINISH_IDLE_HOURS = 4;
 export const LIVE_LOOKBACK_HOURS = 6;
 export const THREE_IN_A_ROW_DAYS = 2;
 

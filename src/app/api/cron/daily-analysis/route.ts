@@ -464,15 +464,10 @@ async function analyzeClient(clientId: string) {
       .from('stalled_history')
       .upsert(upserts, { onConflict: 'client_id,exercise_name_key' });
   }
+  // Stalled alerts land on the Alerts page only. No push: Andrew asked for
+  // them off his phone (2026-10-19) — up to ~8 a day, every morning.
   if (alertInserts.length > 0) {
     await supa.from('alerts').insert(alertInserts);
-    for (const a of alertInserts) {
-      void sendPushToCoach({
-        title: 'Stalled exercise',
-        body: a.message,
-        url: '/coach',
-      }).catch(() => {});
-    }
   }
 
   let proposalsOpened = 0;
