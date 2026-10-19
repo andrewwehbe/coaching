@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 
@@ -6,6 +6,9 @@ import { SESSION_COOKIE } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { prDeltaMessage, type BestSnapshot } from '@/lib/best-effort';
 import { log as logger } from '@/lib/log';
+import { insertAlert } from '@/lib/notify';
+import { quoteClientText } from '@/lib/client-text';
+import { loadClientWorkout } from '@/lib/workout-guard';
 
 const Body = z.object({
   exerciseId: z.string().uuid(),
@@ -51,6 +54,23 @@ export async function POST(req: Request, props: { params: Params }) {
   }
 
   const supa = db();
+
+  // Set notes are rare, so only then pay for reading the set's previous
+  // note: re-saving a set (fixing the weight) re-sends its note, and that
+  // must not alert the coach a second time.
+  const noteText = parsed.data.notes?.trim() || null;
+  let prevNote: string | null = null;
+  if (noteText) {
+    const { data: prevSet } = await supa
+      .from('sets')
+      .select('notes, exercise_logs!inner(workout_id, exercise_id)')
+      .eq('exercise_logs.workout_id', id)
+      .eq('exercise_logs.exercise_id', parsed.data.exerciseId)
+      .eq('set_number', parsed.data.setNumber)
+      .maybeSingle();
+    prevNote = (prevSet?.notes as string | null | undefined)?.trim() || null;
+  }
+
   const { data, error } = await supa.rpc('log_set', {
     p_token: token,
     p_workout_id: id,
@@ -93,6 +113,34 @@ export async function POST(req: Request, props: { params: Params }) {
   }
   if (!result?.ok) {
     return NextResponse.json({ error: 'Failed to save set' }, { status: 500 });
+  }
+
+  const quote = quoteClientText(noteText);
+  if (quote && noteText !== prevNote) {
+    // After the response, so the hot path stays one round trip.
+    after(async () => {
+      const ctx = await loadClientWorkout(id);
+      if (ctx?.actor !== 'client') return;
+      const { data: ex } = await supa
+        .from('exercises')
+        .select('name')
+        .eq('id', parsed.data.exerciseId)
+        .maybeSingle();
+      const exName = (ex?.name as string | undefined) ?? 'a set';
+      await insertAlert({
+        clientId: ctx.user.id,
+        type: 'client_note',
+        message: `${ctx.user.name} · ${exName} set ${parsed.data.setNumber}: ${quote}`,
+        data: {
+          workout_id: id,
+          exercise_id: parsed.data.exerciseId,
+          exercise_name: exName,
+          set_number: parsed.data.setNumber,
+          source: 'set_note',
+          note: noteText,
+        },
+      });
+    });
   }
 
   let prMessage: string | null = null;

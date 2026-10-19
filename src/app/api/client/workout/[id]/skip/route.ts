@@ -3,6 +3,8 @@ import { z } from 'zod';
 
 import { db } from '@/lib/supabase';
 import { loadOpenClientWorkout } from '@/lib/workout-guard';
+import { insertAlert } from '@/lib/notify';
+import { quoteClientText } from '@/lib/client-text';
 
 const Body = z.object({
   exerciseId: z.string().uuid(),
@@ -24,7 +26,7 @@ export async function POST(req: Request, props: { params: Params }) {
   const supa = db();
   const { data: ex } = await supa
     .from('exercises')
-    .select('id, day_id')
+    .select('id, day_id, name')
     .eq('id', parsed.data.exerciseId)
     .maybeSingle();
   if (!ex || ex.day_id !== ctx.workout.dayId) {
@@ -44,6 +46,23 @@ export async function POST(req: Request, props: { params: Params }) {
     );
   if (error) {
     return NextResponse.json({ error: 'Failed to skip' }, { status: 500 });
+  }
+
+  if (ctx.actor === 'client') {
+    const quote = quoteClientText(parsed.data.reason);
+    await insertAlert({
+      clientId: ctx.user.id,
+      type: 'skipped',
+      message: quote
+        ? `${ctx.user.name} skipped ${ex.name}: ${quote}`
+        : `${ctx.user.name} skipped ${ex.name}.`,
+      data: {
+        workout_id: ctx.workout.id,
+        exercise_id: parsed.data.exerciseId,
+        exercise_name: ex.name,
+        reason: parsed.data.reason,
+      },
+    });
   }
 
   return NextResponse.json({ ok: true });

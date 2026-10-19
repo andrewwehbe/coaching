@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { after } from 'next/server';
+
 import { db } from './supabase';
 import { sendPushToCoach } from './push';
 import type { AlertType } from './alert-types';
@@ -32,6 +34,8 @@ const PUSHABLE: ReadonlySet<AlertType> = new Set<AlertType>([
   'returned_after_gap',
   'performance_cliff',
   'went_quiet',
+  'skipped',
+  'client_note',
 ]);
 
 function titleFor(type: AlertType): string {
@@ -50,6 +54,8 @@ function titleFor(type: AlertType): string {
     case 'returned_after_gap': return 'Returned after gap';
     case 'performance_cliff': return 'Performance cliff';
     case 'went_quiet': return 'Went quiet';
+    case 'skipped': return '⏭ Skipped';
+    case 'client_note': return '📝 Note';
     case 'check_in_due': return 'Coaching';
     case 'weekly_note_sent': return 'Coaching';
   }
@@ -70,10 +76,15 @@ export async function insertAlert(args: {
   });
 
   if (PUSHABLE.has(args.type)) {
-    void sendPushToCoach({
-      title: titleFor(args.type),
-      body: args.message,
-      url: '/coach',
-    }).catch(() => {});
+    // after() keeps the function alive until the push is delivered. A bare
+    // `void` promise can be frozen with the function once the response has
+    // gone out, so the push may never leave.
+    after(() =>
+      sendPushToCoach({
+        title: titleFor(args.type),
+        body: args.message,
+        url: '/coach',
+      }).catch(() => {})
+    );
   }
 }

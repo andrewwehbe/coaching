@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { readSession } from '@/lib/auth';
 import { db } from '@/lib/supabase';
 import { insertAlert } from '@/lib/notify';
+import { quoteClientText } from '@/lib/client-text';
 
 const PhotoSchema = z.object({
   label: z.enum(['front', 'side', 'back', 'extra']),
@@ -103,10 +104,13 @@ export async function POST(req: Request) {
     }
   }
 
+  const quote = quoteClientText(notes);
   await insertAlert({
     clientId: user.id,
     type: 'check_in_submitted',
-    message: `${user.name} submitted a check-in.`,
+    message: quote
+      ? `${user.name} submitted a check-in: ${quote}`
+      : `${user.name} submitted a check-in.`,
     data: { check_in_id: ci.id, date },
   });
 

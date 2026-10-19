@@ -3,6 +3,8 @@ import { z } from 'zod';
 
 import { db } from '@/lib/supabase';
 import { loadClientWorkout } from '@/lib/workout-guard';
+import { insertAlert } from '@/lib/notify';
+import { quoteClientText } from '@/lib/client-text';
 
 const Body = z.object({
   exerciseId: z.string().uuid(),
@@ -30,7 +32,7 @@ export async function POST(req: Request, props: { params: Params }) {
   // workout's day before letting the client attach a note to it.
   const { data: ex } = await supa
     .from('exercises')
-    .select('id, day_id, name_key')
+    .select('id, day_id, name, name_key')
     .eq('id', parsed.data.exerciseId)
     .maybeSingle();
   if (!ex || ex.day_id !== ctx.workout.dayId) {
@@ -52,6 +54,13 @@ export async function POST(req: Request, props: { params: Params }) {
     return NextResponse.json({ ok: true, note: null });
   }
 
+  const { data: prev } = await supa
+    .from('exercise_self_notes')
+    .select('note')
+    .eq('client_id', ctx.user.id)
+    .eq('exercise_name_key', ex.name_key)
+    .maybeSingle();
+
   const { error } = await supa.from('exercise_self_notes').upsert(
     {
       client_id: ctx.user.id,
@@ -63,6 +72,23 @@ export async function POST(req: Request, props: { params: Params }) {
   );
   if (error) {
     return NextResponse.json({ error: 'Failed to save note' }, { status: 500 });
+  }
+
+  // Re-saving the same text is not news; only a new or changed note alerts.
+  const quote = quoteClientText(trimmed);
+  if (ctx.actor === 'client' && quote && prev?.note !== trimmed) {
+    await insertAlert({
+      clientId: ctx.user.id,
+      type: 'client_note',
+      message: `${ctx.user.name} · ${ex.name}: ${quote}`,
+      data: {
+        workout_id: ctx.workout.id,
+        exercise_id: ex.id,
+        exercise_name: ex.name,
+        source: 'self_note',
+        note: trimmed,
+      },
+    });
   }
 
   return NextResponse.json({ ok: true, note: trimmed });

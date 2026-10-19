@@ -20,6 +20,7 @@ import {
   type SessionMetric,
 } from '../src/lib/signals/progression';
 import { buildCue, type Best, type Prescription } from '../src/lib/cue';
+import { quoteClientText } from '../src/lib/client-text';
 import {
   EMPTY_PROGRAM_CONTEXT,
   computeProgramContext,
@@ -4664,6 +4665,16 @@ check(
     { client_id: 'c1', exercise_name_key: 'd1::press', best_weight: '42.5', best_unit: 'kg', best_reps: 6 },
   ]).get('c1')?.weight === 42.5,
 );
+
+// ---------- client text quoted in coach alerts (0045) ----------
+
+eq('quote: plain reason quoted', quoteClientText('no time'), '“no time”');
+eq('quote: "." placeholder skip reason -> null', quoteClientText('.'), null);
+eq('quote: punctuation-only -> null', quoteClientText(' -- ? '), null);
+eq('quote: null -> null', quoteClientText(null), null);
+eq('quote: whitespace collapsed', quoteClientText('  felt  too\nheavy '), '“felt too heavy”');
+eq('quote: Arabizi kept', quoteClientText('ma baarf'), '“ma baarf”');
+check('quote: long note cut to 160 chars', (quoteClientText('a'.repeat(400)) ?? '').length === 162);
 
 // ---------- summary ----------
 

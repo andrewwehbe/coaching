@@ -2,7 +2,7 @@
  * Single source of truth for the alerts.type union.
  *
  * The DB-side CHECK constraint on alerts.type is the actual authority
- * (see migrations 0001/0004/0006/0025/0029/0030). This module mirrors
+ * (see migrations 0001/0004/0006/0025/0029/0030/0045). This module mirrors
  * those exact values so every consumer — notify.insertAlert, the
  * coach UI Alerts list, the cron routes — references the SAME union.
  *
@@ -41,7 +41,10 @@ export type AlertType =
   | 'performance_cliff'
   | 'went_quiet'
   // 0030 — Stage 6 Piece 4 per-client per-week dedup row.
-  | 'weekly_note_sent';
+  | 'weekly_note_sent'
+  // 0045 — client skips and client-written notes.
+  | 'skipped'
+  | 'client_note';
 
 /** Runtime list of every alert type. Use this when iterating to build
  *  Records keyed by AlertType so a future addition compile-errors at
@@ -63,4 +66,6 @@ export const ALL_ALERT_TYPES: ReadonlyArray<AlertType> = [
   'performance_cliff',
   'went_quiet',
   'weekly_note_sent',
+  'skipped',
+  'client_note',
 ];

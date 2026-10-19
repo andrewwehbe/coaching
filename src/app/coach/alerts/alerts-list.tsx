@@ -54,6 +54,9 @@ const TYPE_CHIPS: Record<AlertType, { label: string; className: string }> = {
   went_quiet: { label: 'Quiet', className: 'bg-warn/10 text-warn border-warn/35' },
   // Stage 6 Piece 4 — 0030 per-client per-week dedup row.
   weekly_note_sent: { label: 'Note sent', className: 'bg-surface-2 text-muted border-border' },
+  // 0045 — client skips and client-written notes.
+  skipped: { label: 'Skipped', className: 'bg-warn/10 text-warn border-warn/35' },
+  client_note: { label: 'Note', className: 'bg-accent/10 text-accent border-accent/30' },
 };
 
 const UNKNOWN_CHIP = {
